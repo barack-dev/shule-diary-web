@@ -1,5 +1,6 @@
 import DashboardExperience from "../components/DashboardExperience";
 import {
+  buildTeacherSummaryMetrics,
   getEmptyTeacherColumns,
   getTeacherColumnsFromSupabase,
 } from "../lib/dashboard-assignments";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
-async function loadTeacherColumns() {
+async function loadTeacherDashboardData() {
   try {
     const columns = await getTeacherColumnsFromSupabase();
     if (isDevelopment) {
@@ -28,7 +29,12 @@ async function loadTeacherColumns() {
       );
     }
     const hasAssignments = columns.some((column) => column.items.length > 0);
-    return hasAssignments ? columns : getEmptyTeacherColumns();
+    const teacherColumns = hasAssignments ? columns : getEmptyTeacherColumns();
+
+    return {
+      teacherColumns,
+      teacherMetrics: buildTeacherSummaryMetrics(teacherColumns),
+    };
   } catch (error) {
     if (isDevelopment) {
       console.warn(
@@ -36,16 +42,20 @@ async function loadTeacherColumns() {
       );
     }
     console.error("Unable to load dashboard assignments from Supabase.", error);
-    return kanbanColumns;
+
+    return {
+      teacherColumns: kanbanColumns,
+      teacherMetrics: summaryMetrics,
+    };
   }
 }
 
 export default async function Home() {
-  const teacherColumns = await loadTeacherColumns();
+  const { teacherColumns, teacherMetrics } = await loadTeacherDashboardData();
 
   return (
     <DashboardExperience
-      teacherMetrics={summaryMetrics}
+      teacherMetrics={teacherMetrics}
       teacherColumns={teacherColumns}
       parentProfile={parentProfile}
       parentMetrics={parentSummaryMetrics}

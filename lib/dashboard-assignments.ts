@@ -1,4 +1,9 @@
-import type { AssignmentCardData, AssignmentStatus, KanbanColumnData } from "./types";
+import type {
+  AssignmentCardData,
+  AssignmentStatus,
+  KanbanColumnData,
+  SummaryMetric,
+} from "./types";
 import { createClient } from "./supabase/server";
 
 const TEACHER_STATUSES: AssignmentStatus[] = [
@@ -114,4 +119,40 @@ export async function getTeacherColumnsFromSupabase(): Promise<KanbanColumnData[
 
 export function getEmptyTeacherColumns(): KanbanColumnData[] {
   return createEmptyTeacherColumns();
+}
+
+export function buildTeacherSummaryMetrics(columns: KanbanColumnData[]): SummaryMetric[] {
+  const assignments = columns.flatMap((column) => column.items);
+  const students = new Set(
+    assignments
+      .map((assignment) => assignment.student.trim())
+      .filter((studentName) => studentName.length > 0),
+  );
+
+  const pendingAssignments = assignments.filter(
+    (assignment) =>
+      assignment.status !== "Submitted" &&
+      assignment.status !== "Reviewed" &&
+      assignment.status !== "Completed",
+  ).length;
+
+  const submittedWork = assignments.filter(
+    (assignment) => assignment.status === "Submitted",
+  ).length;
+
+  const noDueDateCount = assignments.filter((assignment) => {
+    const dueValue = assignment.due.trim().toLowerCase();
+    return dueValue.length === 0 || dueValue === "no due date";
+  }).length;
+
+  // TODO: Include overdue assignment detection once due dates are stored in a
+  // stable machine-readable format (e.g., full ISO date) in card data.
+  const needsSupport = noDueDateCount;
+
+  return [
+    { label: "Total Students", value: String(students.size) },
+    { label: "Pending Assignments", value: String(pendingAssignments) },
+    { label: "Submitted Work", value: String(submittedWork) },
+    { label: "Needs Support", value: String(needsSupport) },
+  ];
 }
