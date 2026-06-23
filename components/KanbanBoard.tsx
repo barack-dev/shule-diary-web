@@ -3,6 +3,7 @@
 import { DndContext, DragOverlay, PointerSensor, closestCorners, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
+import { insertAssignmentComment } from "../lib/assignment-comments";
 import type {
   AssignmentCardData,
   AssignmentComment,
@@ -27,16 +28,6 @@ type Props = {
   commentButtonLabel?: string;
 };
 
-function formatNow(): string {
-  const now = new Date();
-  return now.toLocaleString("en-US", {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function buildCommentsLookup(data: KanbanColumnData[]): Record<string, AssignmentComment[]> {
   const entries = data.flatMap((column) =>
     column.items
@@ -53,7 +44,7 @@ export default function KanbanBoard({
   description = "Quick view of task status across students and parents.",
   badgeLabel = "Sample board",
   commentAuthor = {
-    name: "Ms. Njeri",
+    name: "Demo Teacher",
     role: "Teacher",
   },
   commentsTitle,
@@ -76,6 +67,8 @@ export default function KanbanBoard({
   const [commentsByAssignment, setCommentsByAssignment] = useState<
     Record<string, AssignmentComment[]>
   >(() => buildCommentsLookup(columns));
+  const [isSavingComment, setIsSavingComment] = useState(false);
+  const [commentSaveError, setCommentSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -86,7 +79,13 @@ export default function KanbanBoard({
     setCommentsByAssignment(buildCommentsLookup(columns));
     setSelectedAssignmentId(null);
     setActiveAssignmentId(null);
+    setIsSavingComment(false);
+    setCommentSaveError(null);
   }, [columns]);
+
+  useEffect(() => {
+    setCommentSaveError(null);
+  }, [selectedAssignmentId]);
 
   const assignmentsById = useMemo(() => {
     const entries = boardColumns.flatMap((column) =>
@@ -107,27 +106,41 @@ export default function KanbanBoard({
     return commentsByAssignment[selectedAssignment.id] ?? selectedAssignment.comments;
   }, [commentsByAssignment, selectedAssignment]);
 
-  const handleAddComment = (message: string) => {
+  const handleAddComment = async (message: string) => {
     const assignmentId = selectedAssignment?.id;
     if (!assignmentId) {
       return;
     }
 
-    const newComment: AssignmentComment = {
-      id: `${assignmentId}-${Date.now()}`,
-      authorName: commentAuthor.name,
-      authorRole: commentAuthor.role,
-      message,
-      createdAt: formatNow(),
-    };
+    setCommentSaveError(null);
+    setIsSavingComment(true);
 
-    setCommentsByAssignment((previous) => {
-      const existing = previous[assignmentId] ?? [];
-      return {
-        ...previous,
-        [assignmentId]: [...existing, newComment],
-      };
-    });
+    try {
+      const newComment = await insertAssignmentComment({
+        assignmentId,
+        authorName: commentAuthor.name,
+        authorRole: commentAuthor.role,
+        message,
+      });
+
+      setCommentsByAssignment((previous) => {
+        const existing = previous[assignmentId] ?? [];
+        return {
+          ...previous,
+          [assignmentId]: [...existing, newComment],
+        };
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error("[ShuleDiary] Unable to save assignment comment:", error.message);
+      } else {
+        console.error("[ShuleDiary] Unable to save assignment comment:", error);
+      }
+      setCommentSaveError("Could not save comment. Please try again.");
+      throw new Error("COMMENT_SAVE_FAILED");
+    } finally {
+      setIsSavingComment(false);
+    }
   };
 
   const columnsWithLiveComments = useMemo(() => {
@@ -349,6 +362,8 @@ export default function KanbanBoard({
             comments={selectedComments}
             onClose={() => setSelectedAssignmentId(null)}
             onAddComment={handleAddComment}
+            isSavingComment={isSavingComment}
+            commentSaveError={commentSaveError}
             commentsTitle={commentsTitle}
             commentPlaceholder={commentPlaceholder}
             commentButtonLabel={commentButtonLabel}

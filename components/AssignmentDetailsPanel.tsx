@@ -7,7 +7,9 @@ type Props = {
   assignment: AssignmentCardData;
   comments: AssignmentComment[];
   onClose: () => void;
-  onAddComment: (message: string) => void;
+  onAddComment: (message: string) => Promise<void>;
+  isSavingComment?: boolean;
+  commentSaveError?: string | null;
   commentsTitle?: string;
   commentPlaceholder?: string;
   commentButtonLabel?: string;
@@ -18,6 +20,8 @@ export default function AssignmentDetailsPanel({
   comments,
   onClose,
   onAddComment,
+  isSavingComment = false,
+  commentSaveError,
   commentsTitle = "Comments",
   commentPlaceholder = "Write a comment...",
   commentButtonLabel = "Add comment",
@@ -28,13 +32,18 @@ export default function AssignmentDetailsPanel({
     return `${comments.length} comment${comments.length === 1 ? "" : "s"}`;
   }, [comments.length]);
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     const trimmed = draft.trim();
     if (!trimmed) {
       return;
     }
-    onAddComment(trimmed);
-    setDraft("");
+
+    try {
+      await onAddComment(trimmed);
+      setDraft("");
+    } catch {
+      // Save error state is shown by the parent component.
+    }
   };
 
   return (
@@ -118,16 +127,21 @@ export default function AssignmentDetailsPanel({
           id="new-comment"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          disabled={isSavingComment}
           placeholder={commentPlaceholder}
           className="min-h-28 w-full rounded-2xl border border-slate-300 p-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
         />
+        {commentSaveError ? (
+          <p className="mt-2 text-sm text-rose-700">{commentSaveError}</p>
+        ) : null}
         <div className="mt-3 flex justify-end">
           <button
             type="button"
             onClick={handleAddComment}
+            disabled={isSavingComment}
             className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
           >
-            {commentButtonLabel}
+            {isSavingComment ? "Saving..." : commentButtonLabel}
           </button>
         </div>
       </div>

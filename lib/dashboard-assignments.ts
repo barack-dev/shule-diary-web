@@ -1,6 +1,8 @@
 import type {
   AssignmentCardData,
+  AssignmentComment,
   AssignmentStatus,
+  CommentAuthorRole,
   KanbanColumnData,
   SummaryMetric,
 } from "./types";
@@ -23,6 +25,15 @@ type SupabaseAssignmentRow = {
   status: string | null;
   priority: string | null;
   description: string | null;
+  created_at: string | null;
+};
+
+type SupabaseAssignmentCommentRow = {
+  id: string;
+  assignment_id: string;
+  author_name: string | null;
+  author_role: string | null;
+  message: string | null;
   created_at: string | null;
 };
 
@@ -72,7 +83,44 @@ function normalizeStatus(status: string | null): AssignmentStatus {
   }
 }
 
-function mapRowToAssignment(row: SupabaseAssignmentRow): AssignmentCardData {
+function normalizeCommentAuthorRole(role: string | null): CommentAuthorRole {
+  return role?.trim().toLowerCase() === "parent" ? "Parent" : "Teacher";
+}
+
+function formatCommentCreatedAt(dateValue: string | null): string {
+  if (!dateValue) {
+    return "";
+  }
+
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return dateValue;
+  }
+
+  return parsed.toLocaleString("en-US", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function mapCommentRowToComment(
+  row: SupabaseAssignmentCommentRow,
+): AssignmentComment {
+  return {
+    id: row.id,
+    authorName: row.author_name?.trim() || "Demo Teacher",
+    authorRole: normalizeCommentAuthorRole(row.author_role),
+    message: row.message?.trim() || "",
+    createdAt: formatCommentCreatedAt(row.created_at),
+  };
+}
+
+function mapRowToAssignment(
+  row: SupabaseAssignmentRow,
+  commentsByAssignmentId: Record<string, AssignmentComment[]>,
+): AssignmentCardData {
   const status = normalizeStatus(row.status);
 
   return {
@@ -82,19 +130,22 @@ function mapRowToAssignment(row: SupabaseAssignmentRow): AssignmentCardData {
     student: "Demo Student",
     due: formatShortDueDate(row.due_date),
     description: row.description?.trim() || "No description provided.",
-    comments: [],
+    comments: commentsByAssignmentId[row.id] ?? [],
     status,
   };
 }
 
-export function buildTeacherColumnsFromAssignments(rows: SupabaseAssignmentRow[]): KanbanColumnData[] {
+export function buildTeacherColumnsFromAssignments(
+  rows: SupabaseAssignmentRow[],
+  commentsByAssignmentId: Record<string, AssignmentComment[]> = {},
+): KanbanColumnData[] {
   const columns = createEmptyTeacherColumns();
   const statusToIndex = new Map<AssignmentStatus, number>(
     columns.map((column, index) => [column.title, index]),
   );
 
   for (const row of rows) {
-    const assignment = mapRowToAssignment(row);
+    const assignment = mapRowToAssignment(row, commentsByAssignmentId);
     const index = statusToIndex.get(assignment.status) ?? 0;
     columns[index].items.push(assignment);
   }
@@ -104,17 +155,47 @@ export function buildTeacherColumnsFromAssignments(rows: SupabaseAssignmentRow[]
 
 export async function getTeacherColumnsFromSupabase(): Promise<KanbanColumnData[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data: assignmentData, error: assignmentError } = await supabase
     .from("assignments")
     .select("id, title, subject, due_date, status, priority, description, created_at")
     .order("created_at", { ascending: false });
 
-  if (error) {
-    throw new Error(error.message);
+  if (assignmentError) {
+    throw new Error(assignmentError.message);
   }
 
-  const rows = (data ?? []) as SupabaseAssignmentRow[];
-  return buildTeacherColumnsFromAssignments(rows);
+  const assignmentRows = (assignmentData ?? []) as SupabaseAssignmentRow[];
+  const assignmentIds = assignmentRows.map((row) => row.id);
+
+  if (assignmentIds.length === 0) {
+    return buildTeacherColumnsFromAssignments(assignmentRows);
+  }
+
+  const { data: commentData, error: commentError } = await supabase
+    .from("assignment_comments")
+    .select("id, assignment_id, author_name, author_role, message, created_at")
+    .in("assignment_id", assignmentIds)
+    .order("created_at", { ascending: true });
+
+  if (commentError) {
+    console.warn(
+      "[ShuleDiary] Unable to load assignment comments from Supabase; continuing with empty comments.",
+    );
+    return buildTeacherColumnsFromAssignments(assignmentRows);
+  }
+
+  const commentRows = (commentData ?? []) as SupabaseAssignmentCommentRow[];
+  const commentsByAssignmentId = commentRows.reduce<Record<string, AssignmentComment[]>>(
+    (lookup, row) => {
+      const comment = mapCommentRowToComment(row);
+      const current = lookup[row.assignment_id] ?? [];
+      lookup[row.assignment_id] = [...current, comment];
+      return lookup;
+    },
+    {},
+  );
+
+  return buildTeacherColumnsFromAssignments(assignmentRows, commentsByAssignmentId);
 }
 
 export function getEmptyTeacherColumns(): KanbanColumnData[] {

@@ -8,5 +8,13 @@ export function createClient() {
     throw new Error("Missing Supabase environment variables.");
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  let supabaseOrigin: string;
+
+  try {
+    supabaseOrigin = new URL(supabaseUrl).origin;
+  } catch {
+    throw new Error("The Supabase URL is invalid.");
+  }
+
+  return createBrowserClient(supabaseOrigin, supabaseAnonKey);
 }
