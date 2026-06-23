@@ -11,7 +11,15 @@ export async function createClient() {
     throw new Error("Missing Supabase environment variables.");
   }
 
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  let supabaseOrigin: string;
+
+  try {
+    supabaseOrigin = new URL(supabaseUrl).origin;
+  } catch {
+    throw new Error("The Supabase URL is invalid.");
+  }
+
+  return createServerClient(supabaseOrigin, supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
