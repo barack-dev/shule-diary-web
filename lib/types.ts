@@ -8,6 +8,8 @@ export type AssignmentStatus =
 
 export type CommentAuthorRole = "Teacher" | "Parent";
 
+export type DashboardRole = "teacher" | "parent";
+
 export interface AssignmentComment {
   id: string;
   authorName: string;
@@ -34,5 +36,20 @@ export interface SummaryMetric {
 
 export interface KanbanColumnData {
   title: AssignmentStatus;
+  label?: string;
   items: AssignmentCardData[];
+}
+
+export type ParentSummaryTone = "amber" | "rose" | "sky" | "emerald";
+
+export interface ParentSummaryMetric extends SummaryMetric {
+  helper: string;
+  tone: ParentSummaryTone;
+}
+
+export interface ParentProfile {
+  childName: string;
+  grade: string;
+  className: string;
+  classTeacher: string;
 }

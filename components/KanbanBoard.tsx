@@ -1,12 +1,27 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import type { AssignmentCardData, AssignmentComment, KanbanColumnData } from "../lib/types";
-import KanbanColumn from "./KanbanColumn";
+import { useMemo, useState } from "react";
+import type {
+  AssignmentCardData,
+  AssignmentComment,
+  CommentAuthorRole,
+  KanbanColumnData,
+} from "../lib/types";
 import AssignmentDetailsPanel from "./AssignmentDetailsPanel";
+import KanbanColumn from "./KanbanColumn";
 
 type Props = {
   columns: KanbanColumnData[];
+  title?: string;
+  description?: string;
+  badgeLabel?: string;
+  commentAuthor?: {
+    name: string;
+    role: CommentAuthorRole;
+  };
+  commentsTitle?: string;
+  commentPlaceholder?: string;
+  commentButtonLabel?: string;
 };
 
 function formatNow(): string {
@@ -29,11 +44,23 @@ function buildCommentsLookup(data: KanbanColumnData[]): Record<string, Assignmen
   return Object.fromEntries(entries);
 }
 
-export default function KanbanBoard({ columns }: Props) {
+export default function KanbanBoard({
+  columns,
+  title = "Assignment Kanban",
+  description = "Quick view of task status across students and parents.",
+  badgeLabel = "Sample board",
+  commentAuthor = {
+    name: "Ms. Njeri",
+    role: "Teacher",
+  },
+  commentsTitle,
+  commentPlaceholder,
+  commentButtonLabel,
+}: Props) {
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentCardData | null>(null);
-  const [commentsByAssignment, setCommentsByAssignment] = useState<Record<string, AssignmentComment[]>>(() =>
-    buildCommentsLookup(columns),
-  );
+  const [commentsByAssignment, setCommentsByAssignment] = useState<
+    Record<string, AssignmentComment[]>
+  >(() => buildCommentsLookup(columns));
 
   const selectedComments = useMemo(() => {
     if (!selectedAssignment?.id) {
@@ -50,8 +77,8 @@ export default function KanbanBoard({ columns }: Props) {
 
     const newComment: AssignmentComment = {
       id: `${assignmentId}-${Date.now()}`,
-      authorName: "Ms. Njeri",
-      authorRole: "Teacher",
+      authorName: commentAuthor.name,
+      authorRole: commentAuthor.role,
       message,
       createdAt: formatNow(),
     };
@@ -82,20 +109,31 @@ export default function KanbanBoard({ columns }: Props) {
     [columns, commentsByAssignment],
   );
 
+  const columnGridClass =
+    columns.length <= 4
+      ? "md:grid-cols-2 xl:grid-cols-4"
+      : "md:grid-cols-2 xl:grid-cols-6";
+
   return (
     <div className="relative">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-xl font-semibold text-slate-950">Assignment Kanban</h3>
-          <p className="mt-1 text-sm text-slate-500">Quick view of task status across students and parents.</p>
+          <h3 className="text-xl font-semibold text-slate-950">{title}</h3>
+          <p className="mt-1 text-sm text-slate-500">{description}</p>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">Sample board</div>
+        <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
+          {badgeLabel}
+        </div>
       </div>
 
       <div className="space-y-4 md:space-y-0 md:overflow-x-auto">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          {columnsWithLiveComments.map((col) => (
-            <KanbanColumn key={col.title} column={col} onSelectAssignment={setSelectedAssignment} />
+        <div className={`grid gap-4 ${columnGridClass}`}>
+          {columnsWithLiveComments.map((column) => (
+            <KanbanColumn
+              key={column.title}
+              column={column}
+              onSelectAssignment={setSelectedAssignment}
+            />
           ))}
         </div>
       </div>
@@ -116,6 +154,9 @@ export default function KanbanBoard({ columns }: Props) {
             comments={selectedComments}
             onClose={() => setSelectedAssignment(null)}
             onAddComment={handleAddComment}
+            commentsTitle={commentsTitle}
+            commentPlaceholder={commentPlaceholder}
+            commentButtonLabel={commentButtonLabel}
           />
         </>
       ) : null}

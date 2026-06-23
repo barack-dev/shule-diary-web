@@ -1,4 +1,9 @@
-import type { AssignmentCardData, KanbanColumnData, SummaryMetric } from "./types";
+import type {
+  KanbanColumnData,
+  ParentProfile,
+  ParentSummaryMetric,
+  SummaryMetric,
+} from "./types";
 
 export const summaryMetrics: SummaryMetric[] = [
   { label: "Total Students", value: "32" },
@@ -190,6 +195,175 @@ export const kanbanColumns: KanbanColumnData[] = [
           },
         ],
         status: "Completed",
+      },
+    ],
+  },
+];
+
+export const parentProfile: ParentProfile = {
+  childName: "Amina Kamau",
+  grade: "Grade 6",
+  className: "Blue Class",
+  classTeacher: "Ms. Njeri",
+};
+
+export const parentSummaryMetrics: ParentSummaryMetric[] = [
+  {
+    label: "Pending Homework",
+    value: "3",
+    helper: "Still to complete",
+    tone: "amber",
+  },
+  {
+    label: "Due Soon",
+    value: "2",
+    helper: "Due in the next 3 days",
+    tone: "rose",
+  },
+  {
+    label: "Teacher Comments",
+    value: "5",
+    helper: "New feedback this week",
+    tone: "sky",
+  },
+  {
+    label: "Milestones",
+    value: "8",
+    helper: "Completed this term",
+    tone: "emerald",
+  },
+];
+
+export const parentKanbanColumns: KanbanColumnData[] = [
+  {
+    title: "Assigned",
+    label: "Ready to start",
+    items: [
+      {
+        id: "p1",
+        title: "Math worksheet",
+        subject: "Math",
+        student: "Amina",
+        due: "Jun 23",
+        description:
+          "Complete the fraction worksheet and show all steps for questions 1-12. Circle any question you found difficult.",
+        comments: [
+          {
+            id: "p1-c1",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Please focus on simplifying fractions before adding them.",
+            createdAt: "Jun 22, 09:15 AM",
+          },
+        ],
+        status: "Assigned",
+      },
+      {
+        id: "p2",
+        title: "Kiswahili vocabulary",
+        subject: "Kiswahili",
+        student: "Amina",
+        due: "Jun 27",
+        description:
+          "Write one sentence for each of the 10 new vocabulary words from this week's reading passage.",
+        comments: [],
+        status: "Assigned",
+      },
+    ],
+  },
+  {
+    title: "In Progress",
+    label: "Being worked on",
+    items: [
+      {
+        id: "p3",
+        title: "Science observations",
+        subject: "Science",
+        student: "Amina",
+        due: "Jun 25",
+        description:
+          "Observe a plant for three days. Record changes in height, leaf color, and soil moisture in the table provided.",
+        comments: [
+          {
+            id: "p3-c1",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "A drawing or photo can be added for each observation day.",
+            createdAt: "Jun 21, 02:40 PM",
+          },
+          {
+            id: "p3-c2",
+            authorName: "Amina's Parent",
+            authorRole: "Parent",
+            message: "We started the observation log after school.",
+            createdAt: "Jun 21, 07:18 PM",
+          },
+        ],
+        status: "In Progress",
+      },
+    ],
+  },
+  {
+    title: "Submitted",
+    label: "Sent to teacher",
+    items: [
+      {
+        id: "p4",
+        title: "Reading response",
+        subject: "Literacy",
+        student: "Amina",
+        due: "Jun 22",
+        description:
+          "Write a short response explaining the main character's biggest challenge and how they handled it.",
+        comments: [
+          {
+            id: "p4-c1",
+            authorName: "Amina's Parent",
+            authorRole: "Parent",
+            message: "Amina completed and submitted her response this morning.",
+            createdAt: "Jun 22, 08:05 AM",
+          },
+          {
+            id: "p4-c2",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Received. I will add feedback after today's lesson.",
+            createdAt: "Jun 22, 10:30 AM",
+          },
+        ],
+        status: "Submitted",
+      },
+    ],
+  },
+  {
+    title: "Reviewed",
+    label: "Feedback received",
+    items: [
+      {
+        id: "p5",
+        title: "Art collage reflection",
+        subject: "Art",
+        student: "Amina",
+        due: "Jun 20",
+        description:
+          "Reflect on your collage project in 150 words: color choices, materials used, and the message you wanted to share.",
+        comments: [
+          {
+            id: "p5-c1",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Thoughtful reflection, Amina. Your explanation of color choices was especially strong.",
+            createdAt: "Jun 20, 03:12 PM",
+          },
+          {
+            id: "p5-c2",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Milestone earned: Creative Communicator.",
+            createdAt: "Jun 20, 03:14 PM",
+          },
+        ],
+        status: "Reviewed",
       },
     ],
   },

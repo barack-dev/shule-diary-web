@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AssignmentCardData, AssignmentComment } from "../lib/types";
 
 type Props = {
@@ -8,6 +8,9 @@ type Props = {
   comments: AssignmentComment[];
   onClose: () => void;
   onAddComment: (message: string) => void;
+  commentsTitle?: string;
+  commentPlaceholder?: string;
+  commentButtonLabel?: string;
 };
 
 export default function AssignmentDetailsPanel({
@@ -15,6 +18,9 @@ export default function AssignmentDetailsPanel({
   comments,
   onClose,
   onAddComment,
+  commentsTitle = "Comments",
+  commentPlaceholder = "Write a comment...",
+  commentButtonLabel = "Add comment",
 }: Props) {
   const [draft, setDraft] = useState("");
 
@@ -33,10 +39,12 @@ export default function AssignmentDetailsPanel({
 
   return (
     <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-2xl">
-      <div className="flex items-start justify-between border-b border-slate-200 p-6">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
         <div>
           <h3 className="text-xl font-semibold text-slate-950">{assignment.title}</h3>
-          <p className="mt-1 text-sm text-slate-600">{assignment.subject} · {assignment.student}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {assignment.subject} · {assignment.student}
+          </p>
         </div>
         <button
           type="button"
@@ -67,14 +75,18 @@ export default function AssignmentDetailsPanel({
         </section>
 
         <section className="space-y-2">
-          <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Instructions</h4>
+          <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Instructions
+          </h4>
           <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700">
             {assignment.description}
           </p>
         </section>
 
         <section className="space-y-3">
-          <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Comments</h4>
+          <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            {commentsTitle}
+          </h4>
           {comments.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
               No comments yet.
@@ -106,7 +118,7 @@ export default function AssignmentDetailsPanel({
           id="new-comment"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Write a comment..."
+          placeholder={commentPlaceholder}
           className="min-h-28 w-full rounded-2xl border border-slate-300 p-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
         />
         <div className="mt-3 flex justify-end">
@@ -115,7 +127,7 @@ export default function AssignmentDetailsPanel({
             onClick={handleAddComment}
             className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
           >
-            Add comment
+            {commentButtonLabel}
           </button>
         </div>
       </div>

@@ -1,4 +1,3 @@
-import React from "react";
 import type { AssignmentCardData } from "../lib/types";
 
 type Props = {
@@ -11,13 +10,17 @@ export default function AssignmentCard({ item, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect?.(item)}
-      className="w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+      className="w-full rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
     >
       <p className="text-sm font-semibold text-slate-950">{item.title}</p>
-      <p className="mt-2 text-sm text-slate-600">{item.subject} · {item.student}</p>
-      <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+      <p className="mt-2 text-sm text-slate-600">
+        {item.subject} · {item.student}
+      </p>
+      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
         <span>Due {item.due}</span>
-        <span>{item.comments.length} comments</span>
+        <span>
+          {item.comments.length} comment{item.comments.length === 1 ? "" : "s"}
+        </span>
       </div>
     </button>
   );
