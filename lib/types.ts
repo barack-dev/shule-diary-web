@@ -6,6 +6,23 @@ export type AssignmentStatus =
   | "Reviewed"
   | "Completed";
 
+export type AssignmentStatusKey =
+  | "assigned"
+  | "seen"
+  | "in_progress"
+  | "submitted"
+  | "reviewed"
+  | "completed";
+
+export const ASSIGNMENT_STATUS_KEY_BY_STATUS: Record<AssignmentStatus, AssignmentStatusKey> = {
+  Assigned: "assigned",
+  "Seen by Parent": "seen",
+  "In Progress": "in_progress",
+  Submitted: "submitted",
+  Reviewed: "reviewed",
+  Completed: "completed",
+};
+
 export type CommentAuthorRole = "Teacher" | "Parent";
 
 export type DashboardRole = "teacher" | "parent";

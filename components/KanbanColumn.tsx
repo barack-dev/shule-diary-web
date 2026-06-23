@@ -1,3 +1,7 @@
+"use client";
+
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import type { AssignmentCardData, KanbanColumnData } from "../lib/types";
 import AssignmentCard from "./AssignmentCard";
 
@@ -7,8 +11,23 @@ type Props = {
 };
 
 export default function KanbanColumn({ column, onSelectAssignment }: Props) {
+  const columnId = `column:${column.title}`;
+  const itemIds = column.items.map((item) => item.id ?? item.title);
+  const { isOver, setNodeRef } = useDroppable({
+    id: columnId,
+    data: {
+      type: "column",
+      status: column.title,
+    },
+  });
+
   return (
-    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+    <div
+      ref={setNodeRef}
+      className={`rounded-3xl border p-4 transition ${
+        isOver ? "border-slate-400 bg-slate-100" : "border-slate-200 bg-slate-50"
+      }`}
+    >
       <div className="mb-4 flex items-center justify-between">
         <h4 className="text-sm font-semibold text-slate-900">
           {column.label ?? column.title}
@@ -17,11 +36,14 @@ export default function KanbanColumn({ column, onSelectAssignment }: Props) {
           {column.items.length}
         </span>
       </div>
-      <div className="space-y-4">
-        {column.items.map((item) => (
-          <AssignmentCard key={item.id ?? item.title} item={item} onSelect={onSelectAssignment} />
-        ))}
-      </div>
+
+      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+        <div className="space-y-4">
+          {column.items.map((item) => (
+            <AssignmentCard key={item.id ?? item.title} item={item} onSelect={onSelectAssignment} />
+          ))}
+        </div>
+      </SortableContext>
     </div>
   );
 }
