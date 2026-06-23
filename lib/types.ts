@@ -6,13 +6,24 @@ export type AssignmentStatus =
   | "Reviewed"
   | "Completed";
 
+export type CommentAuthorRole = "Teacher" | "Parent";
+
+export interface AssignmentComment {
+  id: string;
+  authorName: string;
+  authorRole: CommentAuthorRole;
+  message: string;
+  createdAt: string;
+}
+
 export interface AssignmentCardData {
   id?: string;
   title: string;
   subject: string;
   student: string;
   due: string;
-  comments: number;
+  description: string;
+  comments: AssignmentComment[];
   status: AssignmentStatus;
 }
 

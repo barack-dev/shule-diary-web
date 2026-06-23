@@ -11,37 +11,186 @@ export const kanbanColumns: KanbanColumnData[] = [
   {
     title: "Assigned",
     items: [
-      { id: "a1", title: "Math worksheet", subject: "Math", student: "Amina", due: "Jun 23", comments: 2, status: "Assigned" },
+      {
+        id: "a1",
+        title: "Math worksheet",
+        subject: "Math",
+        student: "Amina",
+        due: "Jun 23",
+        description:
+          "Complete the fraction worksheet and show all steps for questions 1-12. Circle any question you found difficult.",
+        comments: [
+          {
+            id: "a1-c1",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Please focus on simplifying fractions before adding them.",
+            createdAt: "Jun 22, 09:15 AM",
+          },
+          {
+            id: "a1-c2",
+            authorName: "Amina's Parent",
+            authorRole: "Parent",
+            message: "We reviewed questions 1-6 together this evening.",
+            createdAt: "Jun 22, 07:02 PM",
+          },
+        ],
+        status: "Assigned",
+      },
     ],
   },
   {
     title: "Seen by Parent",
     items: [
-      { id: "a2", title: "Science summary", subject: "Science", student: "Brian", due: "Jun 25", comments: 1, status: "Seen by Parent" },
+      {
+        id: "a2",
+        title: "Science summary",
+        subject: "Science",
+        student: "Brian",
+        due: "Jun 25",
+        description:
+          "Write a one-page summary of the water cycle and include one hand-drawn diagram with labels.",
+        comments: [
+          {
+            id: "a2-c1",
+            authorName: "Brian's Parent",
+            authorRole: "Parent",
+            message: "Brian has read the chapter and will draft tomorrow.",
+            createdAt: "Jun 22, 08:10 PM",
+          },
+        ],
+        status: "Seen by Parent",
+      },
     ],
   },
   {
     title: "In Progress",
     items: [
-      { id: "a3", title: "History chart", subject: "History", student: "Chloe", due: "Jun 24", comments: 3, status: "In Progress" },
+      {
+        id: "a3",
+        title: "History chart",
+        subject: "History",
+        student: "Chloe",
+        due: "Jun 24",
+        description:
+          "Create a timeline chart for key events in local independence history with at least six milestones.",
+        comments: [
+          {
+            id: "a3-c1",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Great start. Add event dates on the left for readability.",
+            createdAt: "Jun 21, 03:18 PM",
+          },
+          {
+            id: "a3-c2",
+            authorName: "Chloe's Parent",
+            authorRole: "Parent",
+            message: "We visited the library to collect reference notes.",
+            createdAt: "Jun 21, 06:44 PM",
+          },
+          {
+            id: "a3-c3",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Please cite your sources at the bottom.",
+            createdAt: "Jun 22, 10:05 AM",
+          },
+        ],
+        status: "In Progress",
+      },
     ],
   },
   {
     title: "Submitted",
     items: [
-      { id: "a4", title: "English essay", subject: "English", student: "Dawit", due: "Jun 22", comments: 4, status: "Submitted" },
+      {
+        id: "a4",
+        title: "English essay",
+        subject: "English",
+        student: "Dawit",
+        due: "Jun 22",
+        description:
+          "Write a 400-word essay on 'A person who inspires me' with introduction, body, and conclusion.",
+        comments: [
+          {
+            id: "a4-c1",
+            authorName: "Dawit's Parent",
+            authorRole: "Parent",
+            message: "He completed the first draft last night.",
+            createdAt: "Jun 21, 09:22 PM",
+          },
+          {
+            id: "a4-c2",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Remember to check punctuation before final submission.",
+            createdAt: "Jun 22, 08:30 AM",
+          },
+          {
+            id: "a4-c3",
+            authorName: "Dawit's Parent",
+            authorRole: "Parent",
+            message: "Submitted through the portal this morning.",
+            createdAt: "Jun 22, 10:11 AM",
+          },
+          {
+            id: "a4-c4",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Received, thank you. I will review by tomorrow.",
+            createdAt: "Jun 22, 11:04 AM",
+          },
+        ],
+        status: "Submitted",
+      },
     ],
   },
   {
     title: "Reviewed",
     items: [
-      { id: "a5", title: "Art reflection", subject: "Art", student: "Emma", due: "Jun 20", comments: 0, status: "Reviewed" },
+      {
+        id: "a5",
+        title: "Art reflection",
+        subject: "Art",
+        student: "Emma",
+        due: "Jun 20",
+        description:
+          "Reflect on your collage project in 150 words: color choices, materials used, and message.",
+        comments: [],
+        status: "Reviewed",
+      },
     ],
   },
   {
     title: "Completed",
     items: [
-      { id: "a6", title: "Reading log", subject: "Literacy", student: "Felix", due: "Jun 19", comments: 2, status: "Completed" },
+      {
+        id: "a6",
+        title: "Reading log",
+        subject: "Literacy",
+        student: "Felix",
+        due: "Jun 19",
+        description:
+          "Complete the weekly reading log with 20 minutes of reading each day and one key takeaway per entry.",
+        comments: [
+          {
+            id: "a6-c1",
+            authorName: "Felix's Parent",
+            authorRole: "Parent",
+            message: "All entries were completed over the weekend.",
+            createdAt: "Jun 19, 05:56 PM",
+          },
+          {
+            id: "a6-c2",
+            authorName: "Ms. Njeri",
+            authorRole: "Teacher",
+            message: "Excellent consistency throughout the week.",
+            createdAt: "Jun 20, 09:09 AM",
+          },
+        ],
+        status: "Completed",
+      },
     ],
   },
 ];

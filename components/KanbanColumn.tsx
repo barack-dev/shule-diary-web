@@ -1,8 +1,13 @@
 import React from "react";
-import type { KanbanColumnData } from "../lib/types";
+import type { AssignmentCardData, KanbanColumnData } from "../lib/types";
 import AssignmentCard from "./AssignmentCard";
 
-export default function KanbanColumn({ column }: { column: KanbanColumnData }) {
+type Props = {
+  column: KanbanColumnData;
+  onSelectAssignment?: (assignment: AssignmentCardData) => void;
+};
+
+export default function KanbanColumn({ column, onSelectAssignment }: Props) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
       <div className="mb-4 flex items-center justify-between">
@@ -11,7 +16,7 @@ export default function KanbanColumn({ column }: { column: KanbanColumnData }) {
       </div>
       <div className="space-y-4">
         {column.items.map((item) => (
-          <AssignmentCard key={item.id ?? item.title} item={item} />
+          <AssignmentCard key={item.id ?? item.title} item={item} onSelect={onSelectAssignment} />
         ))}
       </div>
     </div>
