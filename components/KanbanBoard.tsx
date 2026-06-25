@@ -4,9 +4,11 @@ import { DndContext, DragOverlay, PointerSensor, closestCorners, useSensor, useS
 import { arrayMove } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { insertAssignmentComment } from "../lib/assignment-comments";
+import { updateAssignmentStatus } from "../lib/assignment-status";
 import type {
   AssignmentCardData,
   AssignmentComment,
+  AssignmentStatus,
   CommentAuthorRole,
   KanbanColumnData,
 } from "../lib/types";
@@ -26,6 +28,31 @@ type Props = {
   commentsTitle?: string;
   commentPlaceholder?: string;
   commentButtonLabel?: string;
+};
+
+type StatusChangeToPersist = {
+  assignmentId: string;
+  status: AssignmentStatus;
+};
+
+type DragEndOverData = {
+  type?: string;
+  status?: string;
+};
+
+type DragEndEvent = {
+  active: { id: string | number };
+  over: {
+    id: string | number;
+    data: {
+      current?: DragEndOverData;
+    };
+  } | null;
+};
+
+type DragComputationResult = {
+  nextColumns: KanbanColumnData[];
+  statusChangeToPersist: StatusChangeToPersist | null;
 };
 
 function buildCommentsLookup(data: KanbanColumnData[]): Record<string, AssignmentComment[]> {
@@ -69,6 +96,7 @@ export default function KanbanBoard({
   >(() => buildCommentsLookup(columns));
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [commentSaveError, setCommentSaveError] = useState<string | null>(null);
+  const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -81,6 +109,7 @@ export default function KanbanBoard({
     setActiveAssignmentId(null);
     setIsSavingComment(false);
     setCommentSaveError(null);
+    setStatusSaveError(null);
   }, [columns]);
 
   useEffect(() => {
@@ -174,18 +203,104 @@ export default function KanbanBoard({
     setActiveAssignmentId(null);
   };
 
-  const handleDragEnd = (event: {
-    active: { id: string | number };
-    over: {
-      id: string | number;
-      data: {
-        current?: {
-          type?: string;
-          status?: string;
-        };
+  const computeDragResult = (
+    previous: KanbanColumnData[],
+    activeId: string,
+    overId: string,
+    overType: string | undefined,
+    overStatus: string | undefined,
+  ): DragComputationResult | null => {
+    const sourceColumnIndex = findColumnIndexByCardId(previous, activeId);
+    if (sourceColumnIndex < 0) {
+      return null;
+    }
+
+    const sourceItems = previous[sourceColumnIndex].items;
+    const sourceItemIndex = sourceItems.findIndex((item) => item.id === activeId);
+    if (sourceItemIndex < 0) {
+      return null;
+    }
+
+    let targetColumnIndex = -1;
+    if (overType === "column" && overStatus) {
+      targetColumnIndex = findColumnIndexByStatus(previous, overStatus);
+    } else {
+      targetColumnIndex = findColumnIndexByCardId(previous, overId);
+    }
+
+    if (targetColumnIndex < 0) {
+      return null;
+    }
+
+    const isColumnDrop = overType === "column";
+    const sourceColumn = previous[sourceColumnIndex];
+    const targetColumn = previous[targetColumnIndex];
+
+    if (sourceColumnIndex === targetColumnIndex) {
+      if (isColumnDrop) {
+        return null;
+      }
+
+      const targetItemIndex = sourceColumn.items.findIndex((item) => item.id === overId);
+      if (targetItemIndex < 0 || targetItemIndex === sourceItemIndex) {
+        return null;
+      }
+
+      const reorderedItems = arrayMove(sourceColumn.items, sourceItemIndex, targetItemIndex);
+      const nextColumns = previous.map((column, index) =>
+        index === sourceColumnIndex ? { ...column, items: reorderedItems } : column,
+      );
+
+      return {
+        nextColumns,
+        statusChangeToPersist: null,
       };
-    } | null;
-  }) => {
+    }
+
+    const nextSourceItems = [...sourceColumn.items];
+    const [movedItem] = nextSourceItems.splice(sourceItemIndex, 1);
+    if (!movedItem) {
+      return null;
+    }
+
+    const nextTargetItems = [...targetColumn.items];
+    const targetItemIndex = isColumnDrop
+      ? nextTargetItems.length
+      : nextTargetItems.findIndex((item) => item.id === overId);
+
+    const movedWithStatus: AssignmentCardData = {
+      ...movedItem,
+      status: targetColumn.title,
+    };
+
+    if (targetItemIndex < 0) {
+      nextTargetItems.push(movedWithStatus);
+    } else {
+      nextTargetItems.splice(targetItemIndex, 0, movedWithStatus);
+    }
+
+    const nextColumns = previous.map((column, index) => {
+      if (index === sourceColumnIndex) {
+        return { ...column, items: nextSourceItems };
+      }
+      if (index === targetColumnIndex) {
+        return { ...column, items: nextTargetItems };
+      }
+      return column;
+    });
+
+    return {
+      nextColumns,
+      statusChangeToPersist: movedItem.id
+        ? {
+            assignmentId: movedItem.id,
+            status: targetColumn.title,
+          }
+        : null,
+    };
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
     const activeId = String(event.active.id);
     const over = event.over;
 
@@ -199,80 +314,27 @@ export default function KanbanBoard({
     const overType = over.data.current?.type;
     const overStatus = over.data.current?.status;
 
-    setBoardColumns((previous) => {
-      const sourceColumnIndex = findColumnIndexByCardId(previous, activeId);
-      if (sourceColumnIndex < 0) {
-        return previous;
-      }
+    const dragResult = computeDragResult(
+      boardColumns,
+      activeId,
+      overId,
+      overType,
+      overStatus,
+    );
 
-      const sourceItems = previous[sourceColumnIndex].items;
-      const sourceItemIndex = sourceItems.findIndex((item) => item.id === activeId);
-      if (sourceItemIndex < 0) {
-        return previous;
-      }
+    if (!dragResult) {
+      return;
+    }
 
-      let targetColumnIndex = -1;
-      if (overType === "column" && overStatus) {
-        targetColumnIndex = findColumnIndexByStatus(previous, overStatus);
-      } else {
-        targetColumnIndex = findColumnIndexByCardId(previous, overId);
-      }
+    setBoardColumns(dragResult.nextColumns);
 
-      if (targetColumnIndex < 0) {
-        return previous;
-      }
+    if (!dragResult.statusChangeToPersist) {
+      return;
+    }
 
-      const isColumnDrop = overType === "column";
-      const sourceColumn = previous[sourceColumnIndex];
-      const targetColumn = previous[targetColumnIndex];
-
-      if (sourceColumnIndex === targetColumnIndex) {
-        if (isColumnDrop) {
-          return previous;
-        }
-
-        const targetItemIndex = sourceColumn.items.findIndex((item) => item.id === overId);
-        if (targetItemIndex < 0 || targetItemIndex === sourceItemIndex) {
-          return previous;
-        }
-
-        const reorderedItems = arrayMove(sourceColumn.items, sourceItemIndex, targetItemIndex);
-        return previous.map((column, index) =>
-          index === sourceColumnIndex ? { ...column, items: reorderedItems } : column,
-        );
-      }
-
-      const nextSourceItems = [...sourceColumn.items];
-      const [movedItem] = nextSourceItems.splice(sourceItemIndex, 1);
-      if (!movedItem) {
-        return previous;
-      }
-
-      const nextTargetItems = [...targetColumn.items];
-      const targetItemIndex = isColumnDrop
-        ? nextTargetItems.length
-        : nextTargetItems.findIndex((item) => item.id === overId);
-
-      const movedWithStatus: AssignmentCardData = {
-        ...movedItem,
-        status: targetColumn.title,
-      };
-
-      if (targetItemIndex < 0) {
-        nextTargetItems.push(movedWithStatus);
-      } else {
-        nextTargetItems.splice(targetItemIndex, 0, movedWithStatus);
-      }
-
-      return previous.map((column, index) => {
-        if (index === sourceColumnIndex) {
-          return { ...column, items: nextSourceItems };
-        }
-        if (index === targetColumnIndex) {
-          return { ...column, items: nextTargetItems };
-        }
-        return column;
-      });
+    setStatusSaveError(null);
+    void updateAssignmentStatus(dragResult.statusChangeToPersist).catch(() => {
+      setStatusSaveError("Could not save assignment status. Please try again.");
     });
   };
 
@@ -287,6 +349,9 @@ export default function KanbanBoard({
         <div>
           <h3 className="text-xl font-semibold text-slate-950">{title}</h3>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
+          {statusSaveError ? (
+            <p className="mt-2 text-sm text-rose-700">{statusSaveError}</p>
+          ) : null}
         </div>
         <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
           {badgeLabel}
