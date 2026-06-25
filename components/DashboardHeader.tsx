@@ -3,12 +3,14 @@ import type { ReactNode } from "react";
 type Props = {
   title?: string;
   subtitle?: string;
+  contextLine?: string;
   children?: ReactNode;
 };
 
 export default function DashboardHeader({
   title = "Teacher Dashboard",
   subtitle = "Track homework, parent comments, and student progress",
+  contextLine,
   children,
 }: Props) {
   return (
@@ -21,6 +23,9 @@ export default function DashboardHeader({
           <h2 className="mt-2 max-w-3xl text-3xl font-semibold text-slate-950">
             {subtitle}
           </h2>
+          {contextLine ? (
+            <p className="mt-2 text-sm text-slate-600">{contextLine}</p>
+          ) : null}
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {children}

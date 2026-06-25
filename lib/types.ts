@@ -41,6 +41,7 @@ export interface AssignmentCardData {
   subject: string;
   student: string;
   due: string;
+  dueDateRaw?: string;
   description: string;
   comments: AssignmentComment[];
   status: AssignmentStatus;
@@ -69,4 +70,14 @@ export interface ParentProfile {
   grade: string;
   className: string;
   classTeacher: string;
+}
+
+export interface DashboardDirectoryData {
+  schoolName: string | null;
+  teacherName: string | null;
+  parentName: string | null;
+  studentName: string | null;
+  className: string | null;
+  milestoneTitle: string | null;
+  milestoneCount: number | null;
 }

@@ -10,9 +10,22 @@ type Props = {
   profile: ParentProfile;
   metrics: ParentSummaryMetric[];
   columns: KanbanColumnData[];
+  parentName?: string;
 };
 
-export default function ParentDashboard({ profile, metrics, columns }: Props) {
+function toPossessiveDisplayName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return "Parent";
+  }
+  const parts = trimmed.split(/\s+/);
+  const firstName = parts[0] ?? trimmed;
+  return firstName.endsWith("s") ? `${firstName}'` : `${firstName}'s`;
+}
+
+export default function ParentDashboard({ profile, metrics, columns, parentName }: Props) {
+  const resolvedParentName = parentName?.trim() || "Parent";
+
   return (
     <>
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -55,7 +68,7 @@ export default function ParentDashboard({ profile, metrics, columns }: Props) {
           description="Open an assignment to read instructions and see the latest teacher feedback."
           badgeLabel="This week"
           commentAuthor={{
-            name: "Amina's Parent",
+            name: toPossessiveDisplayName(resolvedParentName),
             role: "Parent",
           }}
           commentsTitle="Teacher & family comments"

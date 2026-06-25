@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type {
+  DashboardDirectoryData,
   DashboardRole,
   KanbanColumnData,
   ParentProfile,
@@ -16,6 +17,7 @@ import Sidebar from "./Sidebar";
 import SummaryCard from "./SummaryCard";
 
 type Props = {
+  dashboardContext: DashboardDirectoryData;
   teacherMetrics: SummaryMetric[];
   teacherColumns: KanbanColumnData[];
   parentProfile: ParentProfile;
@@ -24,6 +26,7 @@ type Props = {
 };
 
 export default function DashboardExperience({
+  dashboardContext,
   teacherMetrics,
   teacherColumns,
   parentProfile,
@@ -46,6 +49,13 @@ export default function DashboardExperience({
                 ? "Track homework, teacher feedback, and learning progress"
                 : "Track homework, parent comments, and student progress"
             }
+            contextLine={
+              isParentView
+                ? dashboardContext.schoolName ?? undefined
+                : [dashboardContext.schoolName, dashboardContext.teacherName]
+                    .filter((value) => Boolean(value))
+                    .join(" · ")
+            }
           >
             <RoleSwitcher role={role} onRoleChange={setRole} />
           </DashboardHeader>
@@ -55,6 +65,7 @@ export default function DashboardExperience({
               profile={parentProfile}
               metrics={parentMetrics}
               columns={parentColumns}
+              parentName={dashboardContext.parentName ?? undefined}
             />
           ) : (
             <>
@@ -65,7 +76,13 @@ export default function DashboardExperience({
               </section>
 
               <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <KanbanBoard columns={teacherColumns} />
+                <KanbanBoard
+                  columns={teacherColumns}
+                  commentAuthor={{
+                    name: dashboardContext.teacherName ?? "Teacher",
+                    role: "Teacher",
+                  }}
+                />
               </section>
             </>
           )}

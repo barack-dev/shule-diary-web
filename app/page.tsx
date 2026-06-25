@@ -1,6 +1,8 @@
 import DashboardExperience from "../components/DashboardExperience";
 import {
+  buildParentSummaryMetrics,
   buildTeacherSummaryMetrics,
+  getDashboardContextFromSupabase,
   getEmptyTeacherColumns,
   getTeacherColumnsFromSupabase,
 } from "../lib/dashboard-assignments";
@@ -18,7 +20,12 @@ const isDevelopment = process.env.NODE_ENV === "development";
 
 async function loadTeacherDashboardData() {
   try {
-    const columns = await getTeacherColumnsFromSupabase();
+    const dashboardContext = await getDashboardContextFromSupabase();
+    const columns = await getTeacherColumnsFromSupabase({
+      studentName: dashboardContext.studentName ?? undefined,
+      teacherName: dashboardContext.teacherName ?? undefined,
+      parentName: dashboardContext.parentName ?? undefined,
+    });
     if (isDevelopment) {
       const loadedAssignments = columns.reduce(
         (total, column) => total + column.items.length,
@@ -30,10 +37,26 @@ async function loadTeacherDashboardData() {
     }
     const hasAssignments = columns.some((column) => column.items.length > 0);
     const teacherColumns = hasAssignments ? columns : getEmptyTeacherColumns();
+    const resolvedParentProfile = {
+      ...parentProfile,
+      childName: dashboardContext.studentName ?? parentProfile.childName,
+      className: dashboardContext.className ?? parentProfile.className,
+      classTeacher: dashboardContext.teacherName ?? parentProfile.classTeacher,
+    };
+
+    const resolvedParentMetrics = buildParentSummaryMetrics(teacherColumns, {
+      studentName: dashboardContext.studentName ?? undefined,
+      milestoneCount: dashboardContext.milestoneCount,
+      milestoneTitle: dashboardContext.milestoneTitle,
+    });
 
     return {
       teacherColumns,
       teacherMetrics: buildTeacherSummaryMetrics(teacherColumns),
+      parentColumns: teacherColumns,
+      dashboardContext,
+      parentProfile: resolvedParentProfile,
+      parentMetrics: resolvedParentMetrics,
     };
   } catch (error) {
     if (isDevelopment) {
@@ -46,20 +69,40 @@ async function loadTeacherDashboardData() {
     return {
       teacherColumns: kanbanColumns,
       teacherMetrics: summaryMetrics,
+      parentColumns: parentKanbanColumns,
+      dashboardContext: {
+        schoolName: null,
+        teacherName: null,
+        parentName: null,
+        studentName: null,
+        className: null,
+        milestoneTitle: null,
+        milestoneCount: null,
+      },
+      parentProfile,
+      parentMetrics: parentSummaryMetrics,
     };
   }
 }
 
 export default async function Home() {
-  const { teacherColumns, teacherMetrics } = await loadTeacherDashboardData();
+  const {
+    teacherColumns,
+    teacherMetrics,
+    parentColumns,
+    dashboardContext,
+    parentProfile: resolvedParentProfile,
+    parentMetrics: resolvedParentMetrics,
+  } = await loadTeacherDashboardData();
 
   return (
     <DashboardExperience
+      dashboardContext={dashboardContext}
       teacherMetrics={teacherMetrics}
       teacherColumns={teacherColumns}
-      parentProfile={parentProfile}
-      parentMetrics={parentSummaryMetrics}
-      parentColumns={parentKanbanColumns}
+      parentProfile={resolvedParentProfile}
+      parentMetrics={resolvedParentMetrics}
+      parentColumns={parentColumns}
     />
   );
 }

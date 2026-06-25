@@ -4,6 +4,7 @@ import type {
   AssignmentStatus,
   CommentAuthorRole,
   KanbanColumnData,
+  ParentSummaryMetric,
   SummaryMetric,
 } from "./types";
 import { createClient } from "./supabase/server";
@@ -36,6 +37,47 @@ type SupabaseAssignmentCommentRow = {
   message: string | null;
   created_at: string | null;
 };
+
+type SupabaseSchoolRow = {
+  name: string | null;
+};
+
+type SupabaseProfileRow = {
+  full_name: string | null;
+  role: string | null;
+};
+
+type SupabaseClassRow = {
+  name: string | null;
+};
+
+type SupabaseStudentRow = {
+  full_name: string | null;
+};
+
+type SupabaseMilestoneRow = {
+  title: string | null;
+};
+
+export type DashboardSupabaseContext = {
+  schoolName: string | null;
+  teacherName: string | null;
+  parentName: string | null;
+  studentName: string | null;
+  className: string | null;
+  milestoneTitle: string | null;
+  milestoneCount: number | null;
+};
+
+export type AssignmentMappingDefaults = {
+  studentName?: string;
+  teacherName?: string;
+  parentName?: string;
+};
+
+const DEFAULT_STUDENT_NAME = "Student";
+const DEFAULT_TEACHER_NAME = "Teacher";
+const DEFAULT_PARENT_NAME = "Parent";
 
 function createEmptyTeacherColumns(): KanbanColumnData[] {
   return TEACHER_STATUSES.map((status) => ({
@@ -87,6 +129,19 @@ function normalizeCommentAuthorRole(role: string | null): CommentAuthorRole {
   return role?.trim().toLowerCase() === "parent" ? "Parent" : "Teacher";
 }
 
+function normalizeText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveMappingDefaults(defaults: AssignmentMappingDefaults) {
+  return {
+    studentName: normalizeText(defaults.studentName) ?? DEFAULT_STUDENT_NAME,
+    teacherName: normalizeText(defaults.teacherName) ?? DEFAULT_TEACHER_NAME,
+    parentName: normalizeText(defaults.parentName) ?? DEFAULT_PARENT_NAME,
+  };
+}
+
 function formatCommentCreatedAt(dateValue: string | null): string {
   if (!dateValue) {
     return "";
@@ -107,11 +162,16 @@ function formatCommentCreatedAt(dateValue: string | null): string {
 
 function mapCommentRowToComment(
   row: SupabaseAssignmentCommentRow,
+  defaults: ReturnType<typeof resolveMappingDefaults>,
 ): AssignmentComment {
+  const role = normalizeCommentAuthorRole(row.author_role);
+  const fallbackAuthorName =
+    role === "Parent" ? defaults.parentName : defaults.teacherName;
+
   return {
     id: row.id,
-    authorName: row.author_name?.trim() || "Demo Teacher",
-    authorRole: normalizeCommentAuthorRole(row.author_role),
+    authorName: normalizeText(row.author_name) ?? fallbackAuthorName,
+    authorRole: role,
     message: row.message?.trim() || "",
     createdAt: formatCommentCreatedAt(row.created_at),
   };
@@ -120,6 +180,7 @@ function mapCommentRowToComment(
 function mapRowToAssignment(
   row: SupabaseAssignmentRow,
   commentsByAssignmentId: Record<string, AssignmentComment[]>,
+  defaults: ReturnType<typeof resolveMappingDefaults>,
 ): AssignmentCardData {
   const status = normalizeStatus(row.status);
 
@@ -127,25 +188,44 @@ function mapRowToAssignment(
     id: row.id,
     title: row.title?.trim() || "Untitled assignment",
     subject: row.subject?.trim() || "General",
-    student: "Demo Student",
+    student: defaults.studentName,
     due: formatShortDueDate(row.due_date),
+    dueDateRaw: row.due_date ?? undefined,
     description: row.description?.trim() || "No description provided.",
     comments: commentsByAssignmentId[row.id] ?? [],
     status,
   };
 }
 
+function parseAssignmentDueDate(value: AssignmentCardData): Date | null {
+  if (value.dueDateRaw) {
+    const parsedRawDate = new Date(`${value.dueDateRaw}T00:00:00`);
+    if (!Number.isNaN(parsedRawDate.getTime())) {
+      return parsedRawDate;
+    }
+  }
+
+  const fallbackParsedDate = new Date(value.due);
+  if (!Number.isNaN(fallbackParsedDate.getTime())) {
+    return fallbackParsedDate;
+  }
+
+  return null;
+}
+
 export function buildTeacherColumnsFromAssignments(
   rows: SupabaseAssignmentRow[],
   commentsByAssignmentId: Record<string, AssignmentComment[]> = {},
+  mappingDefaults: AssignmentMappingDefaults = {},
 ): KanbanColumnData[] {
   const columns = createEmptyTeacherColumns();
+  const defaults = resolveMappingDefaults(mappingDefaults);
   const statusToIndex = new Map<AssignmentStatus, number>(
     columns.map((column, index) => [column.title, index]),
   );
 
   for (const row of rows) {
-    const assignment = mapRowToAssignment(row, commentsByAssignmentId);
+    const assignment = mapRowToAssignment(row, commentsByAssignmentId, defaults);
     const index = statusToIndex.get(assignment.status) ?? 0;
     columns[index].items.push(assignment);
   }
@@ -153,7 +233,9 @@ export function buildTeacherColumnsFromAssignments(
   return columns;
 }
 
-export async function getTeacherColumnsFromSupabase(): Promise<KanbanColumnData[]> {
+export async function getTeacherColumnsFromSupabase(
+  mappingDefaults: AssignmentMappingDefaults = {},
+): Promise<KanbanColumnData[]> {
   const supabase = await createClient();
   const { data: assignmentData, error: assignmentError } = await supabase
     .from("assignments")
@@ -168,7 +250,7 @@ export async function getTeacherColumnsFromSupabase(): Promise<KanbanColumnData[
   const assignmentIds = assignmentRows.map((row) => row.id);
 
   if (assignmentIds.length === 0) {
-    return buildTeacherColumnsFromAssignments(assignmentRows);
+    return buildTeacherColumnsFromAssignments(assignmentRows, {}, mappingDefaults);
   }
 
   const { data: commentData, error: commentError } = await supabase
@@ -181,13 +263,14 @@ export async function getTeacherColumnsFromSupabase(): Promise<KanbanColumnData[
     console.warn(
       "[ShuleDiary] Unable to load assignment comments from Supabase; continuing with empty comments.",
     );
-    return buildTeacherColumnsFromAssignments(assignmentRows);
+    return buildTeacherColumnsFromAssignments(assignmentRows, {}, mappingDefaults);
   }
 
   const commentRows = (commentData ?? []) as SupabaseAssignmentCommentRow[];
+  const defaults = resolveMappingDefaults(mappingDefaults);
   const commentsByAssignmentId = commentRows.reduce<Record<string, AssignmentComment[]>>(
     (lookup, row) => {
-      const comment = mapCommentRowToComment(row);
+      const comment = mapCommentRowToComment(row, defaults);
       const current = lookup[row.assignment_id] ?? [];
       lookup[row.assignment_id] = [...current, comment];
       return lookup;
@@ -195,7 +278,164 @@ export async function getTeacherColumnsFromSupabase(): Promise<KanbanColumnData[
     {},
   );
 
-  return buildTeacherColumnsFromAssignments(assignmentRows, commentsByAssignmentId);
+  return buildTeacherColumnsFromAssignments(
+    assignmentRows,
+    commentsByAssignmentId,
+    mappingDefaults,
+  );
+}
+
+export async function getDashboardContextFromSupabase(): Promise<DashboardSupabaseContext> {
+  const supabase = await createClient();
+
+  const [
+    schoolResult,
+    profilesResult,
+    classResult,
+    studentResult,
+    milestoneResult,
+    milestoneCountResult,
+  ] = await Promise.all([
+    supabase.from("schools").select("name").limit(1),
+    supabase
+      .from("profiles")
+      .select("full_name, role")
+      .in("role", ["teacher", "parent"]),
+    supabase.from("classes").select("name").limit(1),
+    supabase.from("students").select("full_name").limit(1),
+    supabase.from("milestones").select("title").limit(1),
+    supabase.from("milestones").select("id", { count: "exact", head: true }),
+  ]);
+
+  const queryResults = [
+    { table: "schools", error: schoolResult.error },
+    { table: "profiles", error: profilesResult.error },
+    { table: "classes", error: classResult.error },
+    { table: "students", error: studentResult.error },
+    { table: "milestones", error: milestoneResult.error },
+    { table: "milestones(count)", error: milestoneCountResult.error },
+  ];
+  const failedQueries = queryResults.filter((result) => result.error);
+
+  if (failedQueries.length > 0) {
+    throw new Error(
+      failedQueries
+        .map(
+          ({ table, error }) =>
+            `${table}: ${error?.message ?? "Unknown query error"}`,
+        )
+        .join(" | "),
+    );
+  }
+
+  const profiles = (profilesResult.data ?? []) as SupabaseProfileRow[];
+  const teacher = profiles.find(
+    (profile) => profile.role?.trim().toLowerCase() === "teacher",
+  );
+  const parent = profiles.find(
+    (profile) => profile.role?.trim().toLowerCase() === "parent",
+  );
+  const school = (schoolResult.data?.[0] ?? null) as SupabaseSchoolRow | null;
+  const firstClass = (classResult.data?.[0] ?? null) as SupabaseClassRow | null;
+  const student = (studentResult.data?.[0] ?? null) as SupabaseStudentRow | null;
+  const milestone =
+    (milestoneResult.data?.[0] ?? null) as SupabaseMilestoneRow | null;
+
+  return {
+    schoolName: normalizeText(school?.name),
+    teacherName: normalizeText(teacher?.full_name),
+    parentName: normalizeText(parent?.full_name),
+    studentName: normalizeText(student?.full_name),
+    className: normalizeText(firstClass?.name),
+    milestoneTitle: normalizeText(milestone?.title),
+    milestoneCount: milestoneCountResult.count ?? null,
+  };
+}
+
+type ParentMetricsInput = {
+  studentName?: string;
+  milestoneCount?: number | null;
+  milestoneTitle?: string | null;
+};
+
+export function buildParentSummaryMetrics(
+  columns: KanbanColumnData[],
+  {
+    studentName,
+    milestoneCount,
+    milestoneTitle,
+  }: ParentMetricsInput = {},
+): ParentSummaryMetric[] {
+  const normalizedStudentName = studentName?.trim().toLowerCase();
+  const assignments = columns.flatMap((column) => column.items);
+  const scopedAssignments = normalizedStudentName
+    ? assignments.filter(
+        (assignment) => assignment.student.trim().toLowerCase() === normalizedStudentName,
+      )
+    : assignments;
+
+  const pendingHomework = scopedAssignments.filter(
+    (assignment) =>
+      assignment.status === "Assigned" ||
+      assignment.status === "Seen by Parent" ||
+      assignment.status === "In Progress",
+  ).length;
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const dueSoonThreshold = new Date(startOfToday);
+  dueSoonThreshold.setDate(dueSoonThreshold.getDate() + 3);
+
+  const dueSoon = scopedAssignments.filter((assignment) => {
+    if (
+      assignment.status === "Submitted" ||
+      assignment.status === "Reviewed" ||
+      assignment.status === "Completed"
+    ) {
+      return false;
+    }
+
+    const dueDate = parseAssignmentDueDate(assignment);
+    if (!dueDate) {
+      return false;
+    }
+
+    return dueDate >= startOfToday && dueDate <= dueSoonThreshold;
+  }).length;
+
+  const teacherComments = scopedAssignments.reduce(
+    (total, assignment) => total + assignment.comments.length,
+    0,
+  );
+
+  const milestones = milestoneCount ?? 0;
+
+  return [
+    {
+      label: "Pending Homework",
+      value: String(pendingHomework),
+      helper: "Still to complete",
+      tone: "amber",
+    },
+    {
+      label: "Due Soon",
+      value: String(dueSoon),
+      helper: "Due in the next 3 days",
+      tone: "rose",
+    },
+    {
+      label: "Teacher Comments",
+      value: String(teacherComments),
+      helper: "Loaded from assignment updates",
+      tone: "sky",
+    },
+    {
+      label: "Milestones",
+      value: String(milestones),
+      helper: milestoneTitle?.trim() || "No milestone recorded yet",
+      tone: "emerald",
+    },
+  ];
 }
 
 export function getEmptyTeacherColumns(): KanbanColumnData[] {
