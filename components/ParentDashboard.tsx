@@ -13,16 +13,6 @@ type Props = {
   parentName?: string;
 };
 
-function toPossessiveDisplayName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return "Parent";
-  }
-  const parts = trimmed.split(/\s+/);
-  const firstName = parts[0] ?? trimmed;
-  return firstName.endsWith("s") ? `${firstName}'` : `${firstName}'s`;
-}
-
 export default function ParentDashboard({ profile, metrics, columns, parentName }: Props) {
   const resolvedParentName = parentName?.trim() || "Parent";
 
@@ -68,7 +58,7 @@ export default function ParentDashboard({ profile, metrics, columns, parentName 
           description="Open an assignment to read instructions and see the latest teacher feedback."
           badgeLabel="This week"
           commentAuthor={{
-            name: toPossessiveDisplayName(resolvedParentName),
+            name: resolvedParentName,
             role: "Parent",
           }}
           commentsTitle="Teacher & family comments"

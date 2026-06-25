@@ -23,19 +23,44 @@ type SupabaseAssignmentRow = {
   title: string | null;
   subject: string | null;
   due_date: string | null;
-  status: string | null;
-  priority: string | null;
   description: string | null;
   created_at: string | null;
 };
 
-type SupabaseAssignmentCommentRow = {
+type SupabaseAssignmentStudentRow = {
   id: string;
-  assignment_id: string;
-  author_name: string | null;
-  author_role: string | null;
-  message: string | null;
+  assignment_id: string | null;
+  student_id: string | null;
+  status: string | null;
   created_at: string | null;
+  updated_at: string | null;
+};
+
+type DashboardAssignmentRow = {
+  assignment_student_id: string;
+  assignment_id: string;
+  student_id: string | null;
+  student_name: string | null;
+  title: string | null;
+  subject: string | null;
+  due_date: string | null;
+  status: string | null;
+  description: string | null;
+  created_at: string | null;
+};
+
+type SupabaseCommentRow = {
+  id: string;
+  assignment_student_id: string | null;
+  user_id: string | null;
+  comment: string | null;
+  created_at: string | null;
+};
+
+type SupabaseCommentAuthorProfileRow = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
 };
 
 type SupabaseSchoolRow = {
@@ -52,6 +77,7 @@ type SupabaseClassRow = {
 };
 
 type SupabaseStudentRow = {
+  id?: string;
   full_name: string | null;
 };
 
@@ -78,6 +104,8 @@ export type AssignmentMappingDefaults = {
 const DEFAULT_STUDENT_NAME = "Student";
 const DEFAULT_TEACHER_NAME = "Teacher";
 const DEFAULT_PARENT_NAME = "Parent";
+const DEMO_TEACHER_PROFILE_ID = "00000000-0000-0000-0000-000000001001";
+const DEMO_PARENT_PROFILE_ID = "00000000-0000-0000-0000-000000001002";
 
 function createEmptyTeacherColumns(): KanbanColumnData[] {
   return TEACHER_STATUSES.map((status) => ({
@@ -129,6 +157,16 @@ function normalizeCommentAuthorRole(role: string | null): CommentAuthorRole {
   return role?.trim().toLowerCase() === "parent" ? "Parent" : "Teacher";
 }
 
+function resolveCommentAuthorRole(
+  userId: string | null,
+  profileRole: string | null,
+): CommentAuthorRole {
+  if (profileRole) {
+    return normalizeCommentAuthorRole(profileRole);
+  }
+  return userId === DEMO_PARENT_PROFILE_ID ? "Parent" : "Teacher";
+}
+
 function normalizeText(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
@@ -161,38 +199,47 @@ function formatCommentCreatedAt(dateValue: string | null): string {
 }
 
 function mapCommentRowToComment(
-  row: SupabaseAssignmentCommentRow,
+  row: SupabaseCommentRow,
   defaults: ReturnType<typeof resolveMappingDefaults>,
+  profilesById: Record<string, SupabaseCommentAuthorProfileRow>,
 ): AssignmentComment {
-  const role = normalizeCommentAuthorRole(row.author_role);
+  const normalizedUserId = normalizeText(row.user_id);
+  const profile = normalizedUserId ? profilesById[normalizedUserId] : undefined;
+  const role = resolveCommentAuthorRole(normalizedUserId, profile?.role ?? null);
   const fallbackAuthorName =
     role === "Parent" ? defaults.parentName : defaults.teacherName;
 
   return {
     id: row.id,
-    authorName: normalizeText(row.author_name) ?? fallbackAuthorName,
+    authorName: normalizeText(profile?.full_name) ?? fallbackAuthorName,
     authorRole: role,
-    message: row.message?.trim() || "",
+    message: row.comment?.trim() || "",
     createdAt: formatCommentCreatedAt(row.created_at),
   };
 }
 
 function mapRowToAssignment(
-  row: SupabaseAssignmentRow,
-  commentsByAssignmentId: Record<string, AssignmentComment[]>,
+  row: DashboardAssignmentRow,
+  commentsByAssignmentStudentId: Record<string, AssignmentComment[]>,
   defaults: ReturnType<typeof resolveMappingDefaults>,
 ): AssignmentCardData {
   const status = normalizeStatus(row.status);
+  const assignmentStudentId = normalizeText(row.assignment_student_id);
+  const resolvedStudentName =
+    normalizeText(row.student_name) ?? defaults.studentName;
 
   return {
-    id: row.id,
+    id: assignmentStudentId ?? row.assignment_id,
+    assignmentStudentId: assignmentStudentId ?? undefined,
     title: row.title?.trim() || "Untitled assignment",
     subject: row.subject?.trim() || "General",
-    student: defaults.studentName,
+    student: resolvedStudentName,
     due: formatShortDueDate(row.due_date),
     dueDateRaw: row.due_date ?? undefined,
     description: row.description?.trim() || "No description provided.",
-    comments: commentsByAssignmentId[row.id] ?? [],
+    comments: assignmentStudentId
+      ? commentsByAssignmentStudentId[assignmentStudentId] ?? []
+      : [],
     status,
   };
 }
@@ -214,8 +261,8 @@ function parseAssignmentDueDate(value: AssignmentCardData): Date | null {
 }
 
 export function buildTeacherColumnsFromAssignments(
-  rows: SupabaseAssignmentRow[],
-  commentsByAssignmentId: Record<string, AssignmentComment[]> = {},
+  rows: DashboardAssignmentRow[],
+  commentsByAssignmentStudentId: Record<string, AssignmentComment[]> = {},
   mappingDefaults: AssignmentMappingDefaults = {},
 ): KanbanColumnData[] {
   const columns = createEmptyTeacherColumns();
@@ -225,7 +272,11 @@ export function buildTeacherColumnsFromAssignments(
   );
 
   for (const row of rows) {
-    const assignment = mapRowToAssignment(row, commentsByAssignmentId, defaults);
+    const assignment = mapRowToAssignment(
+      row,
+      commentsByAssignmentStudentId,
+      defaults,
+    );
     const index = statusToIndex.get(assignment.status) ?? 0;
     columns[index].items.push(assignment);
   }
@@ -237,50 +288,171 @@ export async function getTeacherColumnsFromSupabase(
   mappingDefaults: AssignmentMappingDefaults = {},
 ): Promise<KanbanColumnData[]> {
   const supabase = await createClient();
+  const { data: assignmentStudentData, error: assignmentStudentError } = await supabase
+    .from("assignment_students")
+    .select("id, assignment_id, student_id, status, created_at, updated_at")
+    .order("created_at", { ascending: false });
+
+  if (assignmentStudentError) {
+    throw new Error(assignmentStudentError.message);
+  }
+
+  const assignmentStudentRows = (assignmentStudentData ?? []) as SupabaseAssignmentStudentRow[];
+  const assignmentIds = Array.from(
+    new Set(
+      assignmentStudentRows
+        .map((row) => normalizeText(row.assignment_id))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  if (assignmentIds.length === 0) {
+    return buildTeacherColumnsFromAssignments([], {}, mappingDefaults);
+  }
+
   const { data: assignmentData, error: assignmentError } = await supabase
     .from("assignments")
-    .select("id, title, subject, due_date, status, priority, description, created_at")
-    .order("created_at", { ascending: false });
+    .select("id, title, subject, due_date, description, created_at")
+    .in("id", assignmentIds);
 
   if (assignmentError) {
     throw new Error(assignmentError.message);
   }
 
   const assignmentRows = (assignmentData ?? []) as SupabaseAssignmentRow[];
-  const assignmentIds = assignmentRows.map((row) => row.id);
+  const assignmentsById = Object.fromEntries(
+    assignmentRows.map((row) => [row.id, row]),
+  );
 
-  if (assignmentIds.length === 0) {
-    return buildTeacherColumnsFromAssignments(assignmentRows, {}, mappingDefaults);
+  const studentIds = Array.from(
+    new Set(
+      assignmentStudentRows
+        .map((row) => normalizeText(row.student_id))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  let studentNameById: Record<string, string> = {};
+  if (studentIds.length > 0) {
+    const { data: studentData, error: studentError } = await supabase
+      .from("students")
+      .select("id, full_name")
+      .in("id", studentIds);
+
+    if (studentError) {
+      console.warn(
+        "[ShuleDiary] Unable to load student names from Supabase; using fallback names.",
+      );
+    } else {
+      const studentRows = (studentData ?? []) as SupabaseStudentRow[];
+      studentNameById = Object.fromEntries(
+        studentRows
+          .map((student) => {
+            const name = normalizeText(student.full_name);
+            const studentId = normalizeText(student.id);
+            return name && studentId ? ([studentId, name] as const) : null;
+          })
+          .filter((entry): entry is readonly [string, string] => Boolean(entry)),
+      );
+    }
   }
 
+  const dashboardAssignmentRows: DashboardAssignmentRow[] = assignmentStudentRows
+    .map((assignmentStudent) => {
+      const assignmentId = normalizeText(assignmentStudent.assignment_id);
+      if (!assignmentId) {
+        return null;
+      }
+
+      const assignment = assignmentsById[assignmentId];
+      if (!assignment) {
+        return null;
+      }
+
+      const studentId = normalizeText(assignmentStudent.student_id);
+
+      return {
+        assignment_student_id: assignmentStudent.id,
+        assignment_id: assignmentId,
+        student_id: studentId,
+        student_name: studentId ? studentNameById[studentId] ?? null : null,
+        title: assignment.title,
+        subject: assignment.subject,
+        due_date: assignment.due_date,
+        status: assignmentStudent.status,
+        description: assignment.description,
+        created_at: assignment.created_at,
+      };
+    })
+    .filter((row): row is DashboardAssignmentRow => Boolean(row));
+
+  if (dashboardAssignmentRows.length === 0) {
+    return buildTeacherColumnsFromAssignments([], {}, mappingDefaults);
+  }
+
+  const assignmentStudentIds = dashboardAssignmentRows.map(
+    (row) => row.assignment_student_id,
+  );
+
   const { data: commentData, error: commentError } = await supabase
-    .from("assignment_comments")
-    .select("id, assignment_id, author_name, author_role, message, created_at")
-    .in("assignment_id", assignmentIds)
+    .from("comments")
+    .select("id, assignment_student_id, user_id, comment, created_at")
+    .in("assignment_student_id", assignmentStudentIds)
     .order("created_at", { ascending: true });
 
   if (commentError) {
     console.warn(
       "[ShuleDiary] Unable to load assignment comments from Supabase; continuing with empty comments.",
     );
-    return buildTeacherColumnsFromAssignments(assignmentRows, {}, mappingDefaults);
+    return buildTeacherColumnsFromAssignments(dashboardAssignmentRows, {}, mappingDefaults);
   }
 
-  const commentRows = (commentData ?? []) as SupabaseAssignmentCommentRow[];
+  const commentRows = (commentData ?? []) as SupabaseCommentRow[];
   const defaults = resolveMappingDefaults(mappingDefaults);
-  const commentsByAssignmentId = commentRows.reduce<Record<string, AssignmentComment[]>>(
-    (lookup, row) => {
-      const comment = mapCommentRowToComment(row, defaults);
-      const current = lookup[row.assignment_id] ?? [];
-      lookup[row.assignment_id] = [...current, comment];
-      return lookup;
-    },
-    {},
+  const userIds = Array.from(
+    new Set(
+      commentRows
+        .map((row) => normalizeText(row.user_id))
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
 
+  let profilesById: Record<string, SupabaseCommentAuthorProfileRow> = {};
+  if (userIds.length > 0) {
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, full_name, role")
+      .in("id", userIds);
+
+    if (profileError) {
+      console.warn(
+        "[ShuleDiary] Unable to load comment author profiles from Supabase; using fallback names.",
+      );
+    } else {
+      const profileRows = (profileData ?? []) as SupabaseCommentAuthorProfileRow[];
+      profilesById = Object.fromEntries(
+        profileRows.map((profile) => [profile.id, profile]),
+      );
+    }
+  }
+
+  const commentsByAssignmentStudentId = commentRows.reduce<
+    Record<string, AssignmentComment[]>
+  >((lookup, row) => {
+    const assignmentStudentId = normalizeText(row.assignment_student_id);
+    if (!assignmentStudentId) {
+      return lookup;
+    }
+
+    const comment = mapCommentRowToComment(row, defaults, profilesById);
+    const current = lookup[assignmentStudentId] ?? [];
+    lookup[assignmentStudentId] = [...current, comment];
+    return lookup;
+  }, {});
+
   return buildTeacherColumnsFromAssignments(
-    assignmentRows,
-    commentsByAssignmentId,
+    dashboardAssignmentRows,
+    commentsByAssignmentStudentId,
     mappingDefaults,
   );
 }

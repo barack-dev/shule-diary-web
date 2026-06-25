@@ -2,7 +2,7 @@ import type { AssignmentComment, CommentAuthorRole } from "./types";
 import { createClient } from "./supabase/client";
 
 type AssignmentCommentInsertInput = {
-  assignmentId: string;
+  assignmentStudentId: string;
   authorName: string;
   authorRole: CommentAuthorRole;
   message: string;
@@ -10,15 +10,17 @@ type AssignmentCommentInsertInput = {
 
 type SupabaseAssignmentCommentRow = {
   id: string;
-  assignment_id: string;
-  author_name: string | null;
-  author_role: string | null;
-  message: string | null;
+  assignment_student_id: string | null;
+  user_id: string | null;
+  comment: string | null;
   created_at: string | null;
 };
 
-function normalizeCommentAuthorRole(role: string | null): CommentAuthorRole {
-  return role?.trim().toLowerCase() === "parent" ? "Parent" : "Teacher";
+const DEMO_TEACHER_PROFILE_ID = "00000000-0000-0000-0000-000000001001";
+const DEMO_PARENT_PROFILE_ID = "00000000-0000-0000-0000-000000001002";
+
+function getDemoUserIdForRole(role: CommentAuthorRole): string {
+  return role === "Parent" ? DEMO_PARENT_PROFILE_ID : DEMO_TEACHER_PROFILE_ID;
 }
 
 function formatCommentCreatedAt(dateValue: string | null): string {
@@ -40,31 +42,46 @@ function formatCommentCreatedAt(dateValue: string | null): string {
 }
 
 function mapCommentRowToComment(row: SupabaseAssignmentCommentRow): AssignmentComment {
+  const normalizedRole =
+    row.user_id === DEMO_PARENT_PROFILE_ID
+      ? "Parent"
+      : "Teacher";
+
   return {
     id: row.id,
-    authorName: row.author_name?.trim() || "Demo Teacher",
-    authorRole: normalizeCommentAuthorRole(row.author_role),
-    message: row.message?.trim() || "",
+    authorName: normalizedRole === "Parent" ? "Parent" : "Teacher",
+    authorRole: normalizedRole,
+    message: row.comment?.trim() || "",
     createdAt: formatCommentCreatedAt(row.created_at),
   };
 }
 
 export async function insertAssignmentComment({
-  assignmentId,
+  assignmentStudentId,
   authorName,
   authorRole,
   message,
 }: AssignmentCommentInsertInput): Promise<AssignmentComment> {
+  const trimmedComment = message.trim();
+  if (!trimmedComment) {
+    throw new Error("Comment cannot be empty.");
+  }
+
+  const trimmedAssignmentStudentId = assignmentStudentId.trim();
+  if (!trimmedAssignmentStudentId) {
+    throw new Error("This assignment is missing its student link. Please refresh and try again.");
+  }
+
   const supabase = createClient();
+  const userId = getDemoUserIdForRole(authorRole);
   const { data, error } = await supabase
-    .from("assignment_comments")
+    .from("comments")
     .insert({
-      assignment_id: assignmentId,
-      author_name: authorName,
-      author_role: authorRole,
-      message,
+      assignment_student_id: trimmedAssignmentStudentId,
+      user_id: userId,
+      comment: trimmedComment,
     })
-    .select("id, assignment_id, author_name, author_role, message, created_at")
+    .select("id, assignment_student_id, user_id, comment, created_at")
     .single();
 
   if (error) {
@@ -72,5 +89,10 @@ export async function insertAssignmentComment({
     throw new Error(`Supabase insert failed: ${safeMessage}`);
   }
 
-  return mapCommentRowToComment(data as SupabaseAssignmentCommentRow);
+  const insertedComment = mapCommentRowToComment(data as SupabaseAssignmentCommentRow);
+  return {
+    ...insertedComment,
+    authorName: authorName.trim() || insertedComment.authorName,
+    authorRole,
+  };
 }

@@ -4,11 +4,9 @@ import { DndContext, DragOverlay, PointerSensor, closestCorners, useSensor, useS
 import { arrayMove } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { insertAssignmentComment } from "../lib/assignment-comments";
-import { updateAssignmentStatus } from "../lib/assignment-status";
 import type {
   AssignmentCardData,
   AssignmentComment,
-  AssignmentStatus,
   CommentAuthorRole,
   KanbanColumnData,
 } from "../lib/types";
@@ -30,11 +28,6 @@ type Props = {
   commentButtonLabel?: string;
 };
 
-type StatusChangeToPersist = {
-  assignmentId: string;
-  status: AssignmentStatus;
-};
-
 type DragEndOverData = {
   type?: string;
   status?: string;
@@ -52,7 +45,6 @@ type DragEndEvent = {
 
 type DragComputationResult = {
   nextColumns: KanbanColumnData[];
-  statusChangeToPersist: StatusChangeToPersist | null;
 };
 
 function buildCommentsLookup(data: KanbanColumnData[]): Record<string, AssignmentComment[]> {
@@ -96,7 +88,6 @@ export default function KanbanBoard({
   >(() => buildCommentsLookup(columns));
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [commentSaveError, setCommentSaveError] = useState<string | null>(null);
-  const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -109,7 +100,6 @@ export default function KanbanBoard({
     setActiveAssignmentId(null);
     setIsSavingComment(false);
     setCommentSaveError(null);
-    setStatusSaveError(null);
   }, [columns]);
 
   useEffect(() => {
@@ -137,7 +127,9 @@ export default function KanbanBoard({
 
   const handleAddComment = async (message: string) => {
     const assignmentId = selectedAssignment?.id;
-    if (!assignmentId) {
+    const assignmentStudentId = selectedAssignment?.assignmentStudentId;
+    if (!assignmentId || !assignmentStudentId) {
+      setCommentSaveError("This assignment cannot accept comments right now. Please refresh and try again.");
       return;
     }
 
@@ -146,7 +138,7 @@ export default function KanbanBoard({
 
     try {
       const newComment = await insertAssignmentComment({
-        assignmentId,
+        assignmentStudentId,
         authorName: commentAuthor.name,
         authorRole: commentAuthor.role,
         message,
@@ -162,10 +154,11 @@ export default function KanbanBoard({
     } catch (error) {
       if (error instanceof Error) {
         console.error("[ShuleDiary] Unable to save assignment comment:", error.message);
+        setCommentSaveError(error.message || "Could not save comment. Please try again.");
       } else {
         console.error("[ShuleDiary] Unable to save assignment comment:", error);
+        setCommentSaveError("Could not save comment. Please try again.");
       }
-      setCommentSaveError("Could not save comment. Please try again.");
       throw new Error("COMMENT_SAVE_FAILED");
     } finally {
       setIsSavingComment(false);
@@ -253,7 +246,6 @@ export default function KanbanBoard({
 
       return {
         nextColumns,
-        statusChangeToPersist: null,
       };
     }
 
@@ -291,12 +283,6 @@ export default function KanbanBoard({
 
     return {
       nextColumns,
-      statusChangeToPersist: movedItem.id
-        ? {
-            assignmentId: movedItem.id,
-            status: targetColumn.title,
-          }
-        : null,
     };
   };
 
@@ -327,15 +313,6 @@ export default function KanbanBoard({
     }
 
     setBoardColumns(dragResult.nextColumns);
-
-    if (!dragResult.statusChangeToPersist) {
-      return;
-    }
-
-    setStatusSaveError(null);
-    void updateAssignmentStatus(dragResult.statusChangeToPersist).catch(() => {
-      setStatusSaveError("Could not save assignment status. Please try again.");
-    });
   };
 
   const columnGridClass =
@@ -349,9 +326,6 @@ export default function KanbanBoard({
         <div>
           <h3 className="text-xl font-semibold text-slate-950">{title}</h3>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
-          {statusSaveError ? (
-            <p className="mt-2 text-sm text-rose-700">{statusSaveError}</p>
-          ) : null}
         </div>
         <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
           {badgeLabel}

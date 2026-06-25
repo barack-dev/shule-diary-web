@@ -37,6 +37,7 @@ export interface AssignmentComment {
 
 export interface AssignmentCardData {
   id?: string;
+  assignmentStudentId?: string;
   title: string;
   subject: string;
   student: string;
