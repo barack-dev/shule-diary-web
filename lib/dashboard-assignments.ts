@@ -16,6 +16,8 @@ const TEACHER_STATUSES: AssignmentStatus[] = [
   "Submitted",
   "Reviewed",
   "Completed",
+  "Needs Support",
+  "Overdue",
 ];
 
 type SupabaseAssignmentRow = {
@@ -148,6 +150,12 @@ function normalizeStatus(status: string | null): AssignmentStatus {
       return "Reviewed";
     case "completed":
       return "Completed";
+    case "needs support":
+      return "Needs Support";
+    case "needs_support":
+      return "Needs Support";
+    case "overdue":
+      return "Overdue";
     default:
       return "Assigned";
   }
@@ -550,7 +558,9 @@ export function buildParentSummaryMetrics(
     (assignment) =>
       assignment.status === "Assigned" ||
       assignment.status === "Seen by Parent" ||
-      assignment.status === "In Progress",
+      assignment.status === "In Progress" ||
+      assignment.status === "Needs Support" ||
+      assignment.status === "Overdue",
   ).length;
 
   const startOfToday = new Date();

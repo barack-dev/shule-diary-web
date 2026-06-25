@@ -4,7 +4,9 @@ export type AssignmentStatus =
   | "In Progress"
   | "Submitted"
   | "Reviewed"
-  | "Completed";
+  | "Completed"
+  | "Needs Support"
+  | "Overdue";
 
 export type AssignmentStatusKey =
   | "assigned"
@@ -12,7 +14,9 @@ export type AssignmentStatusKey =
   | "in_progress"
   | "submitted"
   | "reviewed"
-  | "completed";
+  | "completed"
+  | "needs_support"
+  | "overdue";
 
 export const ASSIGNMENT_STATUS_KEY_BY_STATUS: Record<AssignmentStatus, AssignmentStatusKey> = {
   Assigned: "assigned",
@@ -21,6 +25,8 @@ export const ASSIGNMENT_STATUS_KEY_BY_STATUS: Record<AssignmentStatus, Assignmen
   Submitted: "submitted",
   Reviewed: "reviewed",
   Completed: "completed",
+  "Needs Support": "needs_support",
+  Overdue: "overdue",
 };
 
 export type CommentAuthorRole = "Teacher" | "Parent";

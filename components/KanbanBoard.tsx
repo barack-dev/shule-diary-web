@@ -4,9 +4,11 @@ import { DndContext, DragOverlay, PointerSensor, closestCorners, useSensor, useS
 import { arrayMove } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { insertAssignmentComment } from "../lib/assignment-comments";
+import { updateAssignmentStatus } from "../lib/assignment-status";
 import type {
   AssignmentCardData,
   AssignmentComment,
+  AssignmentStatus,
   CommentAuthorRole,
   KanbanColumnData,
 } from "../lib/types";
@@ -45,6 +47,11 @@ type DragEndEvent = {
 
 type DragComputationResult = {
   nextColumns: KanbanColumnData[];
+  statusChangeToPersist: {
+    assignmentStudentId: string;
+    status: AssignmentStatus;
+  } | null;
+  persistenceBlockedReason: string | null;
 };
 
 function buildCommentsLookup(data: KanbanColumnData[]): Record<string, AssignmentComment[]> {
@@ -88,6 +95,10 @@ export default function KanbanBoard({
   >(() => buildCommentsLookup(columns));
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [commentSaveError, setCommentSaveError] = useState<string | null>(null);
+  const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
+  const [statusSaveInFlightCount, setStatusSaveInFlightCount] = useState(0);
+
+  const isSavingStatus = statusSaveInFlightCount > 0;
 
   useEffect(() => {
     setIsMounted(true);
@@ -100,6 +111,8 @@ export default function KanbanBoard({
     setActiveAssignmentId(null);
     setIsSavingComment(false);
     setCommentSaveError(null);
+    setStatusSaveError(null);
+    setStatusSaveInFlightCount(0);
   }, [columns]);
 
   useEffect(() => {
@@ -246,6 +259,8 @@ export default function KanbanBoard({
 
       return {
         nextColumns,
+        statusChangeToPersist: null,
+        persistenceBlockedReason: null,
       };
     }
 
@@ -281,8 +296,20 @@ export default function KanbanBoard({
       return column;
     });
 
+    const assignmentStudentId = movedItem.assignmentStudentId?.trim() ?? "";
+    const statusChangeToPersist = assignmentStudentId
+      ? {
+          assignmentStudentId,
+          status: targetColumn.title,
+        }
+      : null;
+
     return {
       nextColumns,
+      statusChangeToPersist,
+      persistenceBlockedReason: statusChangeToPersist
+        ? null
+        : "Status changed locally but this assignment is missing a Supabase assignment-student id.",
     };
   };
 
@@ -312,7 +339,30 @@ export default function KanbanBoard({
       return;
     }
 
+    const previousColumns = boardColumns;
     setBoardColumns(dragResult.nextColumns);
+
+    if (dragResult.persistenceBlockedReason) {
+      setStatusSaveError(`${dragResult.persistenceBlockedReason} Please refresh and try again.`);
+      setBoardColumns(previousColumns);
+      return;
+    }
+
+    if (!dragResult.statusChangeToPersist) {
+      setStatusSaveError(null);
+      return;
+    }
+
+    setStatusSaveError(null);
+    setStatusSaveInFlightCount((current) => current + 1);
+    void updateAssignmentStatus(dragResult.statusChangeToPersist)
+      .catch(() => {
+        setBoardColumns(previousColumns);
+        setStatusSaveError("Could not save assignment status. The card was moved back to its previous column.");
+      })
+      .finally(() => {
+        setStatusSaveInFlightCount((current) => Math.max(0, current - 1));
+      });
   };
 
   const columnGridClass =
@@ -326,6 +376,11 @@ export default function KanbanBoard({
         <div>
           <h3 className="text-xl font-semibold text-slate-950">{title}</h3>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
+          {statusSaveError ? (
+            <p className="mt-2 text-sm text-rose-700">{statusSaveError}</p>
+          ) : isSavingStatus ? (
+            <p className="mt-2 text-sm text-slate-600">Saving status...</p>
+          ) : null}
         </div>
         <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700">
           {badgeLabel}

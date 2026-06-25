@@ -1,45 +1,48 @@
-import type { AssignmentStatus } from "./types";
+import type { AssignmentStatus, AssignmentStatusKey } from "./types";
+import { ASSIGNMENT_STATUS_KEY_BY_STATUS } from "./types";
 import { createClient } from "./supabase/client";
 
 type AssignmentStatusUpdateInput = {
-  assignmentId: string;
+  assignmentStudentId: string;
   status: AssignmentStatus;
 };
 
 type UpdatedAssignmentStatusRow = {
   id: string;
-  status: AssignmentStatus;
+  status: AssignmentStatusKey;
 };
 
-const ALLOWED_ASSIGNMENT_STATUSES: ReadonlySet<AssignmentStatus> = new Set([
-  "Assigned",
-  "Seen by Parent",
-  "In Progress",
-  "Submitted",
-  "Reviewed",
-  "Completed",
+const ALLOWED_ASSIGNMENT_STATUS_KEYS: ReadonlySet<AssignmentStatusKey> = new Set([
+  "assigned",
+  "seen",
+  "in_progress",
+  "submitted",
+  "reviewed",
+  "completed",
+  "needs_support",
+  "overdue",
 ]);
 
-function isAssignmentStatus(value: string): value is AssignmentStatus {
-  return ALLOWED_ASSIGNMENT_STATUSES.has(value as AssignmentStatus);
+function isAssignmentStatusKey(value: string): value is AssignmentStatusKey {
+  return ALLOWED_ASSIGNMENT_STATUS_KEYS.has(value as AssignmentStatusKey);
 }
 
-function logStatusSaveAttempt(assignmentId: string, status: AssignmentStatus): void {
+function logStatusSaveAttempt(assignmentStudentId: string, status: AssignmentStatus): void {
   if (process.env.NODE_ENV !== "development") {
     return;
   }
-  console.info("[ShuleDiary] Status save attempt", { assignmentId, status });
+  console.info("[ShuleDiary] Status save attempt", { assignmentStudentId, status });
 }
 
-function logStatusSaveSuccess(assignmentId: string, status: AssignmentStatus): void {
+function logStatusSaveSuccess(assignmentStudentId: string, status: AssignmentStatus): void {
   if (process.env.NODE_ENV !== "development") {
     return;
   }
-  console.info("[ShuleDiary] Status save success", { assignmentId, status });
+  console.info("[ShuleDiary] Status save success", { assignmentStudentId, status });
 }
 
 function logStatusSaveFailure(
-  assignmentId: string,
+  assignmentStudentId: string,
   status: AssignmentStatus,
   message: string,
 ): void {
@@ -47,42 +50,48 @@ function logStatusSaveFailure(
     return;
   }
   console.error("[ShuleDiary] Status save failed", {
-    assignmentId,
+    assignmentStudentId,
     status,
     message,
   });
 }
 
 export async function updateAssignmentStatus({
-  assignmentId,
+  assignmentStudentId,
   status,
 }: AssignmentStatusUpdateInput): Promise<UpdatedAssignmentStatusRow> {
-  const supabase = createClient();
+  const trimmedAssignmentStudentId = assignmentStudentId.trim();
+  if (!trimmedAssignmentStudentId) {
+    throw new Error("Status save failed: missing assignment student id.");
+  }
 
-  logStatusSaveAttempt(assignmentId, status);
+  const supabase = createClient();
+  const statusKey = ASSIGNMENT_STATUS_KEY_BY_STATUS[status];
+
+  logStatusSaveAttempt(trimmedAssignmentStudentId, status);
 
   const { data, error } = await supabase
-    .from("assignments")
-    .update({ status })
-    .eq("id", assignmentId)
+    .from("assignment_students")
+    .update({ status: statusKey })
+    .eq("id", trimmedAssignmentStudentId)
     .select("id, status")
     .maybeSingle();
 
   if (error) {
     const safeMessage = error.message?.trim() || "Unknown Supabase update error.";
-    logStatusSaveFailure(assignmentId, status, safeMessage);
+    logStatusSaveFailure(trimmedAssignmentStudentId, status, safeMessage);
     throw new Error(`Supabase status update failed: ${safeMessage}`);
   }
 
   if (!data) {
     const safeMessage = "No assignment row was updated.";
-    logStatusSaveFailure(assignmentId, status, safeMessage);
+    logStatusSaveFailure(trimmedAssignmentStudentId, status, safeMessage);
     throw new Error(`Supabase status update failed: ${safeMessage}`);
   }
 
-  if (!isAssignmentStatus(data.status)) {
+  if (!isAssignmentStatusKey(data.status)) {
     const safeMessage = "Updated row returned an invalid status value.";
-    logStatusSaveFailure(assignmentId, status, safeMessage);
+    logStatusSaveFailure(trimmedAssignmentStudentId, status, safeMessage);
     throw new Error(`Supabase status update failed: ${safeMessage}`);
   }
 
@@ -91,7 +100,7 @@ export async function updateAssignmentStatus({
     status: data.status,
   };
 
-  logStatusSaveSuccess(updatedRow.id, updatedRow.status);
+  logStatusSaveSuccess(updatedRow.id, status);
 
   return updatedRow;
 }
