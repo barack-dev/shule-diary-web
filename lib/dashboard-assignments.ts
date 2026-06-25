@@ -3,6 +3,7 @@ import type {
   AssignmentComment,
   AssignmentStatus,
   CommentAuthorRole,
+  DashboardRole,
   KanbanColumnData,
   ParentSummaryMetric,
   SummaryMetric,
@@ -80,7 +81,16 @@ type SupabaseClassRow = {
 
 type SupabaseStudentRow = {
   id?: string;
+  class_id?: string | null;
   full_name: string | null;
+};
+
+type SupabaseClassOwnershipRow = {
+  id: string;
+};
+
+type SupabaseStudentGuardianRow = {
+  student_id: string | null;
 };
 
 type SupabaseMilestoneRow = {
@@ -101,6 +111,12 @@ export type AssignmentMappingDefaults = {
   studentName?: string;
   teacherName?: string;
   parentName?: string;
+};
+
+export type DashboardViewer = {
+  profileId: string;
+  authUserId: string;
+  role: DashboardRole;
 };
 
 const DEFAULT_STUDENT_NAME = "Student";
@@ -206,6 +222,86 @@ function formatCommentCreatedAt(dateValue: string | null): string {
   });
 }
 
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeText(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+async function assertAuthenticatedViewer(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  viewer: DashboardViewer,
+): Promise<void> {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    throw new Error("Unable to verify dashboard session for assignment loading.");
+  }
+
+  if (user.id !== viewer.authUserId) {
+    throw new Error("Authenticated user mismatch while loading dashboard assignments.");
+  }
+}
+
+async function getOwnedStudentIdsForViewer(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  viewer: DashboardViewer,
+): Promise<string[]> {
+  if (viewer.role === "parent") {
+    const { data, error } = await supabase
+      .from("student_guardians")
+      .select("student_id")
+      .eq("guardian_id", viewer.profileId);
+
+    if (error) {
+      throw new Error(
+        `Unable to load guardian student links: ${error.message ?? "Unknown query error."}`,
+      );
+    }
+
+    const guardianRows = (data ?? []) as SupabaseStudentGuardianRow[];
+    return uniqueNonEmpty(guardianRows.map((row) => row.student_id));
+  }
+
+  const { data: classData, error: classError } = await supabase
+    .from("classes")
+    .select("id")
+    .eq("teacher_id", viewer.profileId);
+
+  if (classError) {
+    throw new Error(
+      `Unable to load teacher classes: ${classError.message ?? "Unknown query error."}`,
+    );
+  }
+
+  const classRows = (classData ?? []) as SupabaseClassOwnershipRow[];
+  const classIds = uniqueNonEmpty(classRows.map((row) => row.id));
+  if (classIds.length === 0) {
+    return [];
+  }
+
+  const { data: studentData, error: studentError } = await supabase
+    .from("students")
+    .select("id")
+    .in("class_id", classIds);
+
+  if (studentError) {
+    throw new Error(
+      `Unable to load students for teacher classes: ${studentError.message ?? "Unknown query error."}`,
+    );
+  }
+
+  const studentRows = (studentData ?? []) as SupabaseStudentRow[];
+  return uniqueNonEmpty(studentRows.map((row) => row.id));
+}
+
 function mapCommentRowToComment(
   row: SupabaseCommentRow,
   defaults: ReturnType<typeof resolveMappingDefaults>,
@@ -294,24 +390,39 @@ export function buildTeacherColumnsFromAssignments(
 
 export async function getTeacherColumnsFromSupabase(
   mappingDefaults: AssignmentMappingDefaults = {},
+  viewer?: DashboardViewer,
 ): Promise<KanbanColumnData[]> {
   const supabase = await createClient();
-  const { data: assignmentStudentData, error: assignmentStudentError } = await supabase
+
+  let ownedStudentIds: string[] | null = null;
+  if (viewer) {
+    await assertAuthenticatedViewer(supabase, viewer);
+    ownedStudentIds = await getOwnedStudentIdsForViewer(supabase, viewer);
+
+    if (ownedStudentIds.length === 0) {
+      return buildTeacherColumnsFromAssignments([], {}, mappingDefaults);
+    }
+  }
+
+  let assignmentStudentsQuery = supabase
     .from("assignment_students")
     .select("id, assignment_id, student_id, status, created_at, updated_at")
     .order("created_at", { ascending: false });
+
+  if (ownedStudentIds) {
+    assignmentStudentsQuery = assignmentStudentsQuery.in("student_id", ownedStudentIds);
+  }
+
+  const { data: assignmentStudentData, error: assignmentStudentError } =
+    await assignmentStudentsQuery;
 
   if (assignmentStudentError) {
     throw new Error(assignmentStudentError.message);
   }
 
   const assignmentStudentRows = (assignmentStudentData ?? []) as SupabaseAssignmentStudentRow[];
-  const assignmentIds = Array.from(
-    new Set(
-      assignmentStudentRows
-        .map((row) => normalizeText(row.assignment_id))
-        .filter((value): value is string => Boolean(value)),
-    ),
+  const assignmentIds = uniqueNonEmpty(
+    assignmentStudentRows.map((row) => normalizeText(row.assignment_id)),
   );
 
   if (assignmentIds.length === 0) {
@@ -332,12 +443,8 @@ export async function getTeacherColumnsFromSupabase(
     assignmentRows.map((row) => [row.id, row]),
   );
 
-  const studentIds = Array.from(
-    new Set(
-      assignmentStudentRows
-        .map((row) => normalizeText(row.student_id))
-        .filter((value): value is string => Boolean(value)),
-    ),
+  const studentIds = uniqueNonEmpty(
+    assignmentStudentRows.map((row) => normalizeText(row.student_id)),
   );
 
   let studentNameById: Record<string, string> = {};

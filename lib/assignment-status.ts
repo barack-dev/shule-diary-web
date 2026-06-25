@@ -1,6 +1,6 @@
 import type { AssignmentStatus, AssignmentStatusKey } from "./types";
 import { ASSIGNMENT_STATUS_KEY_BY_STATUS } from "./types";
-import { createClient } from "./supabase/client";
+import { getAuthenticatedClientProfile } from "./supabase/client-profile";
 
 type AssignmentStatusUpdateInput = {
   assignmentStudentId: string;
@@ -65,7 +65,8 @@ export async function updateAssignmentStatus({
     throw new Error("Status save failed: missing assignment student id.");
   }
 
-  const supabase = createClient();
+  const profile = await getAuthenticatedClientProfile();
+  const supabase = profile.supabase;
   const statusKey = ASSIGNMENT_STATUS_KEY_BY_STATUS[status];
 
   logStatusSaveAttempt(trimmedAssignmentStudentId, status);
@@ -84,7 +85,8 @@ export async function updateAssignmentStatus({
   }
 
   if (!data) {
-    const safeMessage = "No assignment row was updated.";
+    const safeMessage =
+      "No assignment row was updated. It may not exist or you may not have access.";
     logStatusSaveFailure(trimmedAssignmentStudentId, status, safeMessage);
     throw new Error(`Supabase status update failed: ${safeMessage}`);
   }

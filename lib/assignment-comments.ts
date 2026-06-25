@@ -1,5 +1,5 @@
 import type { AssignmentComment, CommentAuthorRole } from "./types";
-import { createClient } from "./supabase/client";
+import { getAuthenticatedClientProfile } from "./supabase/client-profile";
 
 type AssignmentCommentInsertInput = {
   assignmentStudentId: string;
@@ -15,13 +15,6 @@ type SupabaseAssignmentCommentRow = {
   comment: string | null;
   created_at: string | null;
 };
-
-const DEMO_TEACHER_PROFILE_ID = "00000000-0000-0000-0000-000000001001";
-const DEMO_PARENT_PROFILE_ID = "00000000-0000-0000-0000-000000001002";
-
-function getDemoUserIdForRole(role: CommentAuthorRole): string {
-  return role === "Parent" ? DEMO_PARENT_PROFILE_ID : DEMO_TEACHER_PROFILE_ID;
-}
 
 function formatCommentCreatedAt(dateValue: string | null): string {
   if (!dateValue) {
@@ -42,24 +35,22 @@ function formatCommentCreatedAt(dateValue: string | null): string {
 }
 
 function mapCommentRowToComment(row: SupabaseAssignmentCommentRow): AssignmentComment {
-  const normalizedRole =
-    row.user_id === DEMO_PARENT_PROFILE_ID
-      ? "Parent"
-      : "Teacher";
-
   return {
     id: row.id,
-    authorName: normalizedRole === "Parent" ? "Parent" : "Teacher",
-    authorRole: normalizedRole,
+    authorName: "Teacher",
+    authorRole: "Teacher",
     message: row.comment?.trim() || "",
     createdAt: formatCommentCreatedAt(row.created_at),
   };
 }
 
+function resolveCommentAuthorRoleFromProfile(role: string | null): CommentAuthorRole {
+  return role?.trim().toLowerCase() === "parent" ? "Parent" : "Teacher";
+}
+
 export async function insertAssignmentComment({
   assignmentStudentId,
   authorName,
-  authorRole,
   message,
 }: AssignmentCommentInsertInput): Promise<AssignmentComment> {
   const trimmedComment = message.trim();
@@ -72,13 +63,15 @@ export async function insertAssignmentComment({
     throw new Error("This assignment is missing its student link. Please refresh and try again.");
   }
 
-  const supabase = createClient();
-  const userId = getDemoUserIdForRole(authorRole);
+  const profile = await getAuthenticatedClientProfile();
+  const resolvedRole = resolveCommentAuthorRoleFromProfile(profile.role);
+  const supabase = profile.supabase;
+
   const { data, error } = await supabase
     .from("comments")
     .insert({
       assignment_student_id: trimmedAssignmentStudentId,
-      user_id: userId,
+      user_id: profile.profileId,
       comment: trimmedComment,
     })
     .select("id, assignment_student_id, user_id, comment, created_at")
@@ -90,9 +83,10 @@ export async function insertAssignmentComment({
   }
 
   const insertedComment = mapCommentRowToComment(data as SupabaseAssignmentCommentRow);
+  const fallbackAuthorName = authorName.trim() || insertedComment.authorName;
   return {
     ...insertedComment,
-    authorName: authorName.trim() || insertedComment.authorName,
-    authorRole,
+    authorName: profile.fullName ?? fallbackAuthorName,
+    authorRole: resolvedRole,
   };
 }

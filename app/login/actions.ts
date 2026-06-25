@@ -30,7 +30,7 @@ export async function loginWithPassword(
     };
   }
 
-  redirect("/");
+  redirect("/dashboard");
 }
 
 export async function logoutAction(): Promise<void> {

@@ -57,6 +57,17 @@ function buildSafeAuthMessage(prefix: string, detail: string | null | undefined)
   return `${prefix} ${safeDetail}`;
 }
 
+function isExpectedLoggedOutAuthError(error: { message?: string; name?: string }): boolean {
+  const name = error.name?.trim().toLowerCase() ?? "";
+  const message = error.message?.trim().toLowerCase() ?? "";
+
+  return (
+    name.includes("authsessionmissingerror") ||
+    message.includes("auth session missing") ||
+    message.includes("session missing")
+  );
+}
+
 export async function getAuthenticatedProfile(): Promise<AuthenticatedProfile | null> {
   const result = await getAuthProfileResult();
   if (result.status !== "authenticated") {
@@ -73,6 +84,12 @@ export async function getAuthProfileResult(): Promise<AuthProfileResult> {
   } = await supabase.auth.getUser();
 
   if (userError) {
+    if (isExpectedLoggedOutAuthError(userError)) {
+      return {
+        status: "unauthenticated",
+      };
+    }
+
     return {
       status: "error",
       message: buildSafeAuthMessage(
