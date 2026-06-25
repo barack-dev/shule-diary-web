@@ -11,12 +11,16 @@ import type {
 } from "../lib/types";
 import DashboardHeader from "./DashboardHeader";
 import KanbanBoard from "./KanbanBoard";
+import LogoutButton from "./LogoutButton";
 import ParentDashboard from "./ParentDashboard";
 import RoleSwitcher from "./RoleSwitcher";
 import Sidebar from "./Sidebar";
 import SummaryCard from "./SummaryCard";
 
 type Props = {
+  initialRole: DashboardRole;
+  allowedRoles?: DashboardRole[];
+  signedInName?: string;
   dashboardContext: DashboardDirectoryData;
   teacherMetrics: SummaryMetric[];
   teacherColumns: KanbanColumnData[];
@@ -26,6 +30,9 @@ type Props = {
 };
 
 export default function DashboardExperience({
+  initialRole,
+  allowedRoles = ["teacher", "parent"],
+  signedInName,
   dashboardContext,
   teacherMetrics,
   teacherColumns,
@@ -33,13 +40,22 @@ export default function DashboardExperience({
   parentMetrics,
   parentColumns,
 }: Props) {
-  const [role, setRole] = useState<DashboardRole>("teacher");
-  const isParentView = role === "parent";
+  const [role, setRole] = useState<DashboardRole>(initialRole);
+  const roleIsAllowed = allowedRoles.includes(role);
+  const activeRole = roleIsAllowed ? role : initialRole;
+  const canSwitchRole = allowedRoles.length > 1;
+  const handleRoleChange = (nextRole: DashboardRole) => {
+    if (!allowedRoles.includes(nextRole)) {
+      return;
+    }
+    setRole(nextRole);
+  };
+  const isParentView = activeRole === "parent";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <Sidebar role={role} />
+        <Sidebar role={activeRole} />
 
         <main className="flex min-w-0 flex-1 flex-col gap-6">
           <DashboardHeader
@@ -57,7 +73,19 @@ export default function DashboardExperience({
                     .join(" · ")
             }
           >
-            <RoleSwitcher role={role} onRoleChange={setRole} />
+            {canSwitchRole ? (
+              <RoleSwitcher role={activeRole} onRoleChange={handleRoleChange} />
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                {activeRole === "teacher" ? "Teacher View" : "Parent View"}
+              </div>
+            )}
+            {signedInName ? (
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700">
+                Signed in as <span className="font-semibold text-slate-900">{signedInName}</span>
+              </div>
+            ) : null}
+            <LogoutButton />
           </DashboardHeader>
 
           {isParentView ? (

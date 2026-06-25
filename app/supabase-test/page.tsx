@@ -145,6 +145,18 @@ async function loadPageData(): Promise<PageDataResult> {
       { label: "Milestone title", value: milestoneResult.data?.[0]?.title },
     ];
 
+    const hasAtLeastOneValue = details.some((detail) => {
+      const value = detail.value?.trim();
+      return Boolean(value);
+    });
+
+    if (!hasAtLeastOneValue && comments.length === 0) {
+      return {
+        error:
+          "Supabase queries completed, but no demo rows were returned. Check demo seed data and table policies.",
+      };
+    }
+
     return { data: { comments, details } };
   } catch (error) {
     return {
