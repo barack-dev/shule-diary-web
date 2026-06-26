@@ -10,6 +10,8 @@
 -- - Does not remove helper functions from migration 60.
 -- - Does not remove onboarding/profile columns.
 -- - Does not remove demo data.
+-- - Current app runtime does not query public.schools or public.milestones;
+--   temporary read policies on those tables are removed intentionally.
 
 -- ---------------------------------------------------------------------------
 -- 1) Drop known legacy temp/demo policy names used across earlier iterations
@@ -35,6 +37,11 @@ drop policy if exists "demo_update_assignments_status" on public.assignments;
 -- ---------------------------------------------------------------------------
 -- 2) Drop broad temporary name variants seen in manual SQL editor experiments
 -- ---------------------------------------------------------------------------
+
+drop policy if exists "Temporary authenticated read schools" on public.schools;
+drop policy if exists "Temporary demo read schools" on public.schools;
+drop policy if exists "Temporary authenticated read milestones" on public.milestones;
+drop policy if exists "Temporary demo read milestones" on public.milestones;
 
 drop policy if exists "Temporary authenticated read classes" on public.classes;
 drop policy if exists "Temporary demo read classes" on public.classes;
