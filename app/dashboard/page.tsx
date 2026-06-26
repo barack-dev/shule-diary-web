@@ -10,7 +10,6 @@ import {
   getEmptyTeacherColumns,
   getTeacherColumnsFromSupabase,
 } from "../../lib/dashboard-assignments";
-import { parentProfile } from "../../lib/mock-data";
 import { getAuthProfileResult } from "../../lib/supabase/auth-profile";
 import type {
   DashboardDirectoryData,
@@ -24,6 +23,13 @@ import type {
 export const dynamic = "force-dynamic";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+
+const FALLBACK_PARENT_PROFILE: ParentProfile = {
+  childName: "Student",
+  grade: "Not set",
+  className: "Class not set",
+  classTeacher: "Teacher",
+};
 
 type DashboardLoadSuccess = {
   status: "ready";
@@ -71,10 +77,11 @@ async function loadTeacherDashboardData(authenticatedProfile: {
     const hasAssignments = columns.some((column) => column.items.length > 0);
     const teacherColumns = hasAssignments ? columns : getEmptyTeacherColumns();
     const resolvedParentProfile = {
-      ...parentProfile,
-      childName: dashboardContext.studentName ?? parentProfile.childName,
-      className: dashboardContext.className ?? parentProfile.className,
-      classTeacher: dashboardContext.teacherName ?? parentProfile.classTeacher,
+      ...FALLBACK_PARENT_PROFILE,
+      childName: dashboardContext.studentName ?? FALLBACK_PARENT_PROFILE.childName,
+      className: dashboardContext.className ?? FALLBACK_PARENT_PROFILE.className,
+      classTeacher:
+        dashboardContext.teacherName ?? FALLBACK_PARENT_PROFILE.classTeacher,
     };
 
     const resolvedParentMetrics = buildParentSummaryMetrics(teacherColumns, {

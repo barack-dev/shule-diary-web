@@ -620,14 +620,25 @@ export async function getDashboardContextFromSupabase(
       }
 
       const students = (studentData ?? []) as SupabaseStudentRow[];
-      studentName = normalizeText(students[0]?.full_name);
+      const sortedStudents = [...students].sort((left, right) => {
+        const leftName = normalizeText(left.full_name) ?? "";
+        const rightName = normalizeText(right.full_name) ?? "";
+        return leftName.localeCompare(rightName, undefined, { sensitivity: "base" });
+      });
 
-      const classIds = uniqueNonEmpty(students.map((student) => student.class_id));
-      if (classIds.length > 0) {
+      const selectedStudent =
+        sortedStudents.find((student) => normalizeText(student.full_name)) ??
+        sortedStudents[0];
+
+      studentName = normalizeText(selectedStudent?.full_name);
+
+      const selectedClassId = normalizeText(selectedStudent?.class_id);
+      if (selectedClassId) {
         const { data: classData, error: classError } = await supabase
           .from("classes")
-          .select("id, name")
-          .in("id", classIds);
+          .select("name")
+          .eq("id", selectedClassId)
+          .maybeSingle();
 
         if (classError) {
           throw new Error(
@@ -635,8 +646,7 @@ export async function getDashboardContextFromSupabase(
           );
         }
 
-        const classes = (classData ?? []) as SupabaseClassRow[];
-        className = normalizeText(classes[0]?.name);
+        className = normalizeText((classData as { name: string | null } | null)?.name);
       }
     }
   } else {
