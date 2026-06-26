@@ -1,3 +1,11 @@
+import {
+  buildProfileOwnerFilter,
+  buildSafeAuthMessage,
+  hasCompleteProfileSetup,
+  isExpectedLoggedOutAuthError,
+  normalizeDashboardRole,
+  normalizeText,
+} from "../auth-utils";
 import type { DashboardRole } from "../types";
 import { createClient } from "./server";
 
@@ -10,8 +18,10 @@ export type AuthenticatedProfile = {
 
 type SupabaseProfileRow = {
   id: string;
+  user_id: string | null;
   auth_user_id: string | null;
   full_name: string | null;
+  school_name: string | null;
   role: string | null;
 };
 
@@ -35,38 +45,6 @@ export type AuthProfileResult =
       authUserId: string | null;
       userEmail: string | null;
     };
-
-function normalizeProfileRole(value: string | null): DashboardRole | null {
-  const role = value?.trim().toLowerCase();
-  if (role === "teacher" || role === "parent") {
-    return role;
-  }
-  return null;
-}
-
-function normalizeText(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : null;
-}
-
-function buildSafeAuthMessage(prefix: string, detail: string | null | undefined): string {
-  const safeDetail = detail?.trim();
-  if (!safeDetail) {
-    return prefix;
-  }
-  return `${prefix} ${safeDetail}`;
-}
-
-function isExpectedLoggedOutAuthError(error: { message?: string; name?: string }): boolean {
-  const name = error.name?.trim().toLowerCase() ?? "";
-  const message = error.message?.trim().toLowerCase() ?? "";
-
-  return (
-    name.includes("authsessionmissingerror") ||
-    message.includes("auth session missing") ||
-    message.includes("session missing")
-  );
-}
 
 export async function getAuthenticatedProfile(): Promise<AuthenticatedProfile | null> {
   const result = await getAuthProfileResult();
@@ -109,8 +87,8 @@ export async function getAuthProfileResult(): Promise<AuthProfileResult> {
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id, auth_user_id, full_name, role")
-    .eq("auth_user_id", user.id)
+    .select("id, user_id, auth_user_id, full_name, school_name, role")
+    .or(buildProfileOwnerFilter(user.id))
     .maybeSingle();
 
   if (profileError) {
@@ -131,24 +109,23 @@ export async function getAuthProfileResult(): Promise<AuthProfileResult> {
       authUserId: user.id,
       userEmail: normalizeText(user.email),
       message:
-        "Your account is signed in, but no matching profile was found in public.profiles.",
+        "Your account is signed in, but no profile setup was found yet.",
     };
   }
 
   const profile = profileData as SupabaseProfileRow;
-  const role = normalizeProfileRole(profile.role);
-  if (!role) {
+  const role = normalizeDashboardRole(profile.role);
+  if (!hasCompleteProfileSetup(profile) || !role) {
     return {
       status: "missing-profile",
       authUserId: user.id,
       userEmail: normalizeText(user.email),
       message:
-        "Your account profile has an unsupported role. Please contact support.",
+        "Your account profile setup is incomplete. Please finish onboarding.",
     };
   }
 
-  const fullName =
-    normalizeText(profile.full_name) ?? normalizeText(user.email) ?? "ShuleDiary User";
+  const fullName = normalizeText(profile.full_name) ?? "ShuleDiary User";
 
   return {
     status: "authenticated",

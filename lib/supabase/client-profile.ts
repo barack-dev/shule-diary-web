@@ -1,8 +1,16 @@
 import { createClient } from "./client";
+import {
+  buildProfileOwnerFilter,
+  hasCompleteProfileSetup,
+  normalizeText,
+} from "../auth-utils";
 
 type SupabaseProfileRow = {
   id: string;
+  user_id: string | null;
+  auth_user_id: string | null;
   full_name: string | null;
+  school_name: string | null;
   role: string | null;
 };
 
@@ -27,8 +35,8 @@ export async function getAuthenticatedClientProfile(): Promise<AuthenticatedClie
 
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name, role")
-    .eq("auth_user_id", user.id)
+    .select("id, user_id, auth_user_id, full_name, school_name, role")
+    .or(buildProfileOwnerFilter(user.id))
     .maybeSingle();
 
   if (profileError) {
@@ -42,11 +50,15 @@ export async function getAuthenticatedClientProfile(): Promise<AuthenticatedClie
     throw new Error("Your account is signed in but no profile mapping was found.");
   }
 
+  if (!hasCompleteProfileSetup(profile)) {
+    throw new Error("Your profile setup is incomplete. Please finish onboarding.");
+  }
+
   return {
     supabase,
     authUserId: user.id,
     profileId: profile.id,
-    fullName: profile.full_name?.trim() || null,
-    role: profile.role?.trim() || null,
+    fullName: normalizeText(profile.full_name),
+    role: normalizeText(profile.role),
   };
 }

@@ -66,17 +66,17 @@ type SupabaseCommentAuthorProfileRow = {
   role: string | null;
 };
 
-type SupabaseSchoolRow = {
-  name: string | null;
-};
-
 type SupabaseProfileRow = {
+  id?: string;
   full_name: string | null;
+  school_name?: string | null;
   role: string | null;
 };
 
 type SupabaseClassRow = {
+  id?: string;
   name: string | null;
+  teacher_id?: string | null;
 };
 
 type SupabaseStudentRow = {
@@ -91,10 +91,6 @@ type SupabaseClassOwnershipRow = {
 
 type SupabaseStudentGuardianRow = {
   student_id: string | null;
-};
-
-type SupabaseMilestoneRow = {
-  title: string | null;
 };
 
 export type DashboardSupabaseContext = {
@@ -122,7 +118,6 @@ export type DashboardViewer = {
 const DEFAULT_STUDENT_NAME = "Student";
 const DEFAULT_TEACHER_NAME = "Teacher";
 const DEFAULT_PARENT_NAME = "Parent";
-const DEMO_TEACHER_PROFILE_ID = "00000000-0000-0000-0000-000000001001";
 const DEMO_PARENT_PROFILE_ID = "00000000-0000-0000-0000-000000001002";
 
 function createEmptyTeacherColumns(): KanbanColumnData[] {
@@ -572,70 +567,119 @@ export async function getTeacherColumnsFromSupabase(
   );
 }
 
-export async function getDashboardContextFromSupabase(): Promise<DashboardSupabaseContext> {
+export async function getDashboardContextFromSupabase(
+  viewer: DashboardViewer,
+): Promise<DashboardSupabaseContext> {
   const supabase = await createClient();
+  await assertAuthenticatedViewer(supabase, viewer);
 
-  const [
-    schoolResult,
-    profilesResult,
-    classResult,
-    studentResult,
-    milestoneResult,
-    milestoneCountResult,
-  ] = await Promise.all([
-    supabase.from("schools").select("name").limit(1),
-    supabase
-      .from("profiles")
-      .select("full_name, role")
-      .in("role", ["teacher", "parent"]),
-    supabase.from("classes").select("name").limit(1),
-    supabase.from("students").select("full_name").limit(1),
-    supabase.from("milestones").select("title").limit(1),
-    supabase.from("milestones").select("id", { count: "exact", head: true }),
-  ]);
+  const { data: profileData, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, full_name, school_name, role")
+    .eq("id", viewer.profileId)
+    .maybeSingle();
 
-  const queryResults = [
-    { table: "schools", error: schoolResult.error },
-    { table: "profiles", error: profilesResult.error },
-    { table: "classes", error: classResult.error },
-    { table: "students", error: studentResult.error },
-    { table: "milestones", error: milestoneResult.error },
-    { table: "milestones(count)", error: milestoneCountResult.error },
-  ];
-  const failedQueries = queryResults.filter((result) => result.error);
-
-  if (failedQueries.length > 0) {
+  if (profileError) {
     throw new Error(
-      failedQueries
-        .map(
-          ({ table, error }) =>
-            `${table}: ${error?.message ?? "Unknown query error"}`,
-        )
-        .join(" | "),
+      `profiles: ${profileError.message ?? "Unknown query error"}`,
     );
   }
 
-  const profiles = (profilesResult.data ?? []) as SupabaseProfileRow[];
-  const teacher = profiles.find(
-    (profile) => profile.role?.trim().toLowerCase() === "teacher",
-  );
-  const parent = profiles.find(
-    (profile) => profile.role?.trim().toLowerCase() === "parent",
-  );
-  const school = (schoolResult.data?.[0] ?? null) as SupabaseSchoolRow | null;
-  const firstClass = (classResult.data?.[0] ?? null) as SupabaseClassRow | null;
-  const student = (studentResult.data?.[0] ?? null) as SupabaseStudentRow | null;
-  const milestone =
-    (milestoneResult.data?.[0] ?? null) as SupabaseMilestoneRow | null;
+  const viewerProfile = (profileData ?? null) as SupabaseProfileRow | null;
+  let className: string | null = null;
+  let studentName: string | null = null;
+
+  if (viewer.role === "parent") {
+    const { data: guardianData, error: guardianError } = await supabase
+      .from("student_guardians")
+      .select("student_id")
+      .eq("guardian_id", viewer.profileId);
+
+    if (guardianError) {
+      throw new Error(
+        `student_guardians: ${guardianError.message ?? "Unknown query error"}`,
+      );
+    }
+
+    const studentIds = uniqueNonEmpty(
+      ((guardianData ?? []) as SupabaseStudentGuardianRow[]).map(
+        (row) => row.student_id,
+      ),
+    );
+
+    if (studentIds.length > 0) {
+      const { data: studentData, error: studentError } = await supabase
+        .from("students")
+        .select("id, full_name, class_id")
+        .in("id", studentIds);
+
+      if (studentError) {
+        throw new Error(
+          `students: ${studentError.message ?? "Unknown query error"}`,
+        );
+      }
+
+      const students = (studentData ?? []) as SupabaseStudentRow[];
+      studentName = normalizeText(students[0]?.full_name);
+
+      const classIds = uniqueNonEmpty(students.map((student) => student.class_id));
+      if (classIds.length > 0) {
+        const { data: classData, error: classError } = await supabase
+          .from("classes")
+          .select("id, name")
+          .in("id", classIds);
+
+        if (classError) {
+          throw new Error(
+            `classes: ${classError.message ?? "Unknown query error"}`,
+          );
+        }
+
+        const classes = (classData ?? []) as SupabaseClassRow[];
+        className = normalizeText(classes[0]?.name);
+      }
+    }
+  } else {
+    const { data: classData, error: classError } = await supabase
+      .from("classes")
+      .select("id, name")
+      .eq("teacher_id", viewer.profileId);
+
+    if (classError) {
+      throw new Error(`classes: ${classError.message ?? "Unknown query error"}`);
+    }
+
+    const classes = (classData ?? []) as SupabaseClassRow[];
+    className = normalizeText(classes[0]?.name);
+
+    const classIds = uniqueNonEmpty(classes.map((classRow) => classRow.id));
+    if (classIds.length > 0) {
+      const { data: studentData, error: studentError } = await supabase
+        .from("students")
+        .select("id, full_name")
+        .in("class_id", classIds);
+
+      if (studentError) {
+        throw new Error(
+          `students: ${studentError.message ?? "Unknown query error"}`,
+        );
+      }
+
+      const students = (studentData ?? []) as SupabaseStudentRow[];
+      studentName = normalizeText(students[0]?.full_name);
+    }
+  }
 
   return {
-    schoolName: normalizeText(school?.name),
-    teacherName: normalizeText(teacher?.full_name),
-    parentName: normalizeText(parent?.full_name),
-    studentName: normalizeText(student?.full_name),
-    className: normalizeText(firstClass?.name),
-    milestoneTitle: normalizeText(milestone?.title),
-    milestoneCount: milestoneCountResult.count ?? null,
+    schoolName: normalizeText(viewerProfile?.school_name),
+    teacherName:
+      viewer.role === "teacher" ? normalizeText(viewerProfile?.full_name) : null,
+    parentName:
+      viewer.role === "parent" ? normalizeText(viewerProfile?.full_name) : null,
+    studentName,
+    className,
+    milestoneTitle: null,
+    milestoneCount: null,
   };
 }
 

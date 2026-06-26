@@ -2,7 +2,7 @@
 
 import { DndContext, DragOverlay, PointerSensor, closestCorners, useSensor, useSensors } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { insertAssignmentComment } from "../lib/assignment-comments";
 import { updateAssignmentStatus } from "../lib/assignment-status";
 import type {
@@ -64,6 +64,11 @@ function buildCommentsLookup(data: KanbanColumnData[]): Record<string, Assignmen
   return Object.fromEntries(entries);
 }
 
+function subscribeToClientHydration(onStoreChange: () => void) {
+  onStoreChange();
+  return () => {};
+}
+
 export default function KanbanBoard({
   columns,
   title = "Assignment Kanban",
@@ -77,7 +82,11 @@ export default function KanbanBoard({
   commentPlaceholder,
   commentButtonLabel,
 }: Props) {
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useSyncExternalStore(
+    subscribeToClientHydration,
+    () => true,
+    () => false,
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -99,25 +108,6 @@ export default function KanbanBoard({
   const [statusSaveInFlightCount, setStatusSaveInFlightCount] = useState(0);
 
   const isSavingStatus = statusSaveInFlightCount > 0;
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  useEffect(() => {
-    setBoardColumns(columns);
-    setCommentsByAssignment(buildCommentsLookup(columns));
-    setSelectedAssignmentId(null);
-    setActiveAssignmentId(null);
-    setIsSavingComment(false);
-    setCommentSaveError(null);
-    setStatusSaveError(null);
-    setStatusSaveInFlightCount(0);
-  }, [columns]);
-
-  useEffect(() => {
-    setCommentSaveError(null);
-  }, [selectedAssignmentId]);
 
   const assignmentsById = useMemo(() => {
     const entries = boardColumns.flatMap((column) =>
@@ -207,6 +197,16 @@ export default function KanbanBoard({
 
   const handleDragCancel = () => {
     setActiveAssignmentId(null);
+  };
+
+  const handleSelectAssignment = (assignment: AssignmentCardData) => {
+    setSelectedAssignmentId(assignment.id ?? null);
+    setCommentSaveError(null);
+  };
+
+  const handleCloseAssignment = () => {
+    setSelectedAssignmentId(null);
+    setCommentSaveError(null);
   };
 
   const computeDragResult = (
@@ -427,9 +427,7 @@ export default function KanbanBoard({
                 <KanbanColumn
                   key={column.title}
                   column={column}
-                  onSelectAssignment={(assignment) =>
-                    setSelectedAssignmentId(assignment.id ?? null)
-                  }
+                  onSelectAssignment={handleSelectAssignment}
                 />
               ))}
             </div>
@@ -445,7 +443,7 @@ export default function KanbanBoard({
           <button
             type="button"
             className="fixed inset-0 z-40 bg-slate-900/20"
-            onClick={() => setSelectedAssignmentId(null)}
+            onClick={handleCloseAssignment}
             aria-label="Close assignment details"
           />
           <AssignmentDetailsPanel
@@ -454,7 +452,7 @@ export default function KanbanBoard({
               comments: selectedComments,
             }}
             comments={selectedComments}
-            onClose={() => setSelectedAssignmentId(null)}
+            onClose={handleCloseAssignment}
             onAddComment={handleAddComment}
             isSavingComment={isSavingComment}
             commentSaveError={commentSaveError}

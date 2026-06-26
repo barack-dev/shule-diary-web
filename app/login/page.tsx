@@ -1,19 +1,14 @@
 import { redirect } from "next/navigation";
 import LoginForm from "./LoginForm";
+import {
+  buildProfileOwnerFilter,
+  hasCompleteProfileSetup,
+  isExpectedLoggedOutAuthError,
+} from "../../lib/auth-utils";
 import { createClient } from "../../lib/supabase/server";
+import { getLoginRouteDecision } from "../../lib/auth-routing";
 
 export const dynamic = "force-dynamic";
-
-function isExpectedLoggedOutAuthError(error: { message?: string; name?: string }): boolean {
-  const name = error.name?.trim().toLowerCase() ?? "";
-  const message = error.message?.trim().toLowerCase() ?? "";
-
-  return (
-    name.includes("authsessionmissingerror") ||
-    message.includes("auth session missing") ||
-    message.includes("session missing")
-  );
-}
 
 export default async function LoginPage() {
   const supabase = await createClient();
@@ -23,7 +18,19 @@ export default async function LoginPage() {
   } = await supabase.auth.getUser();
 
   if (user) {
-    redirect("/dashboard");
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("full_name, school_name, role")
+      .or(buildProfileOwnerFilter(user.id))
+      .maybeSingle();
+    const decision = getLoginRouteDecision(
+      true,
+      hasCompleteProfileSetup(profileData),
+    );
+
+    if (decision.type === "redirect") {
+      redirect(decision.destination);
+    }
   }
 
   const showSessionWarning = error ? !isExpectedLoggedOutAuthError(error) : false;

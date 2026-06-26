@@ -1,6 +1,8 @@
 import DashboardExperience from "../../components/DashboardExperience";
 import LogoutButton from "../../components/LogoutButton";
 import { redirect } from "next/navigation";
+import { getDashboardRouteDecision } from "../../lib/auth-routing";
+import { createDashboardLoadError, type DashboardLoadError } from "../../lib/dashboard-errors";
 import {
   buildParentSummaryMetrics,
   buildTeacherSummaryMetrics,
@@ -8,36 +10,55 @@ import {
   getEmptyTeacherColumns,
   getTeacherColumnsFromSupabase,
 } from "../../lib/dashboard-assignments";
-import {
-  kanbanColumns,
-  parentKanbanColumns,
-  parentProfile,
-  parentSummaryMetrics,
-  summaryMetrics,
-} from "../../lib/mock-data";
+import { parentProfile } from "../../lib/mock-data";
 import { getAuthProfileResult } from "../../lib/supabase/auth-profile";
-import type { DashboardRole } from "../../lib/types";
+import type {
+  DashboardDirectoryData,
+  DashboardRole,
+  KanbanColumnData,
+  ParentProfile,
+  ParentSummaryMetric,
+  SummaryMetric,
+} from "../../lib/types";
 
 export const dynamic = "force-dynamic";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
+type DashboardLoadSuccess = {
+  status: "ready";
+  teacherColumns: KanbanColumnData[];
+  teacherMetrics: SummaryMetric[];
+  parentColumns: KanbanColumnData[];
+  dashboardContext: DashboardDirectoryData;
+  parentProfile: ParentProfile;
+  parentMetrics: ParentSummaryMetric[];
+};
+
+type DashboardLoadResult =
+  | DashboardLoadSuccess
+  | {
+      status: "error";
+      error: DashboardLoadError;
+    };
+
 async function loadTeacherDashboardData(authenticatedProfile: {
   id: string;
   authUserId: string;
   role: DashboardRole;
-}) {
+}): Promise<DashboardLoadResult> {
   try {
-    const dashboardContext = await getDashboardContextFromSupabase();
+    const viewer = {
+      profileId: authenticatedProfile.id,
+      authUserId: authenticatedProfile.authUserId,
+      role: authenticatedProfile.role,
+    };
+    const dashboardContext = await getDashboardContextFromSupabase(viewer);
     const columns = await getTeacherColumnsFromSupabase({
       studentName: dashboardContext.studentName ?? undefined,
       teacherName: dashboardContext.teacherName ?? undefined,
       parentName: dashboardContext.parentName ?? undefined,
-    }, {
-      profileId: authenticatedProfile.id,
-      authUserId: authenticatedProfile.authUserId,
-      role: authenticatedProfile.role,
-    });
+    }, viewer);
     if (isDevelopment) {
       const loadedAssignments = columns.reduce(
         (total, column) => total + column.items.length,
@@ -63,6 +84,7 @@ async function loadTeacherDashboardData(authenticatedProfile: {
     });
 
     return {
+      status: "ready",
       teacherColumns,
       teacherMetrics: buildTeacherSummaryMetrics(teacherColumns),
       parentColumns: teacherColumns,
@@ -71,40 +93,55 @@ async function loadTeacherDashboardData(authenticatedProfile: {
       parentMetrics: resolvedParentMetrics,
     };
   } catch (error) {
-    if (isDevelopment) {
-      console.warn(
-        "[ShuleDiary] Falling back to mock dashboard assignments due to Supabase load error.",
-      );
-    }
-    console.error("Unable to load dashboard assignments from Supabase.", error);
-
+    const dashboardError = createDashboardLoadError(error);
+    console.error(
+      "[ShuleDiary] Unable to load dashboard assignments from Supabase.",
+      dashboardError.developerMessage,
+    );
     return {
-      teacherColumns: kanbanColumns,
-      teacherMetrics: summaryMetrics,
-      parentColumns: parentKanbanColumns,
-      dashboardContext: {
-        schoolName: null,
-        teacherName: null,
-        parentName: null,
-        studentName: null,
-        className: null,
-        milestoneTitle: null,
-        milestoneCount: null,
-      },
-      parentProfile,
-      parentMetrics: parentSummaryMetrics,
+      status: "error",
+      error: dashboardError,
     };
   }
 }
 
+function DashboardDataErrorState({ error }: { error: DashboardLoadError }) {
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-950 sm:px-6">
+      <div className="mx-auto max-w-2xl">
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm sm:p-8">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">
+            ShuleDiary
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-amber-950">
+            Dashboard data is unavailable
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-amber-900">
+            {error.userMessage}
+          </p>
+          {isDevelopment ? (
+            <p className="mt-3 rounded-2xl border border-amber-200 bg-white/70 px-3 py-2 text-xs leading-5 text-amber-900">
+              Developer detail: {error.developerMessage}
+            </p>
+          ) : null}
+          <div className="mt-6">
+            <LogoutButton />
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 export default async function DashboardPage() {
   const authResult = await getAuthProfileResult();
+  const decision = getDashboardRouteDecision(authResult);
 
-  if (authResult.status === "unauthenticated") {
-    redirect("/login");
+  if (decision.type === "redirect") {
+    redirect(decision.destination);
   }
 
-  if (authResult.status === "missing-profile" || authResult.status === "error") {
+  if (authResult.status === "error") {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-950 sm:px-6">
         <div className="mx-auto max-w-2xl">
@@ -132,16 +169,17 @@ export default async function DashboardPage() {
     );
   }
 
+  if (authResult.status !== "authenticated") {
+    redirect("/login");
+  }
+
   const authenticatedProfile = authResult.profile;
 
-  const {
-    teacherColumns,
-    teacherMetrics,
-    parentColumns,
-    dashboardContext,
-    parentProfile: resolvedParentProfile,
-    parentMetrics: resolvedParentMetrics,
-  } = await loadTeacherDashboardData(authenticatedProfile);
+  const dashboardData = await loadTeacherDashboardData(authenticatedProfile);
+
+  if (dashboardData.status === "error") {
+    return <DashboardDataErrorState error={dashboardData.error} />;
+  }
 
   const allowedRoles: DashboardRole[] = [authenticatedProfile.role];
 
@@ -150,12 +188,12 @@ export default async function DashboardPage() {
       initialRole={authenticatedProfile.role}
       allowedRoles={allowedRoles}
       signedInName={authenticatedProfile.fullName}
-      dashboardContext={dashboardContext}
-      teacherMetrics={teacherMetrics}
-      teacherColumns={teacherColumns}
-      parentProfile={resolvedParentProfile}
-      parentMetrics={resolvedParentMetrics}
-      parentColumns={parentColumns}
+      dashboardContext={dashboardData.dashboardContext}
+      teacherMetrics={dashboardData.teacherMetrics}
+      teacherColumns={dashboardData.teacherColumns}
+      parentProfile={dashboardData.parentProfile}
+      parentMetrics={dashboardData.parentMetrics}
+      parentColumns={dashboardData.parentColumns}
     />
   );
 }

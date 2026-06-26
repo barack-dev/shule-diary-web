@@ -1,12 +1,9 @@
--- Demo-only policy for Kanban status persistence on public.assignments.
--- Apply this only if RLS is enabled on public.assignments.
--- Replace with authenticated, role-based policies when auth is implemented.
+-- Legacy hardening for the early demo status update model.
+--
+-- Current Kanban persistence updates public.assignment_students.status, not
+-- public.assignments. Remove the previous demo-wide assignments update policy.
 
 alter table public.assignments enable row level security;
 
 drop policy if exists "demo_update_assignment_status" on public.assignments;
-create policy "demo_update_assignment_status"
-  on public.assignments
-  for update
-  using (true)
-  with check (true);
+
