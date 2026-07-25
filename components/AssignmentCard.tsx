@@ -2,6 +2,7 @@
 
 import { CSS } from "@dnd-kit/utilities";
 import { useSortable } from "@dnd-kit/sortable";
+import { getAssignmentAttentionBadges } from "../lib/assignment-priority";
 import type { AssignmentCardData } from "../lib/types";
 
 type Props = {
@@ -16,12 +17,30 @@ type CardBodyProps = {
 };
 
 function CardBody({ item, dragging = false }: CardBodyProps) {
+  const attentionBadges = getAssignmentAttentionBadges(item);
+
   return (
     <>
       <p className="text-sm font-semibold text-slate-950">{item.title}</p>
       <p className="mt-2 text-sm text-slate-600">
         {item.subject} · {item.student}
       </p>
+      {attentionBadges.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {attentionBadges.map((badge) => (
+            <span
+              key={badge.kind}
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                badge.tone === "high"
+                  ? "bg-rose-100 text-rose-700"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {badge.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
         <span>Due {item.due}</span>
         <span>

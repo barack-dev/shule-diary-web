@@ -8,7 +8,11 @@ import type {
   ParentSummaryMetric,
   SummaryMetric,
 } from "./types";
-import { createClient } from "./supabase/server";
+import type { AssignmentTargetOption } from "./assignment-creation";
+
+type SupabaseServerClient = Awaited<
+  ReturnType<typeof import("./supabase/server").createClient>
+>;
 
 const TEACHER_STATUSES: AssignmentStatus[] = [
   "Assigned",
@@ -79,9 +83,20 @@ type SupabaseClassRow = {
   teacher_id?: string | null;
 };
 
+type SupabaseClassTargetRow = {
+  id: string;
+  name: string | null;
+};
+
 type SupabaseStudentRow = {
   id?: string;
   class_id?: string | null;
+  full_name: string | null;
+};
+
+type SupabaseStudentTargetRow = {
+  id: string;
+  class_id: string | null;
   full_name: string | null;
 };
 
@@ -228,7 +243,7 @@ function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
 }
 
 async function assertAuthenticatedViewer(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseServerClient,
   viewer: DashboardViewer,
 ): Promise<void> {
   const {
@@ -246,7 +261,7 @@ async function assertAuthenticatedViewer(
 }
 
 async function getOwnedStudentIdsForViewer(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseServerClient,
   viewer: DashboardViewer,
 ): Promise<string[]> {
   if (viewer.role === "parent") {
@@ -314,6 +329,7 @@ function mapCommentRowToComment(
     authorRole: role,
     message: row.comment?.trim() || "",
     createdAt: formatCommentCreatedAt(row.created_at),
+    createdAtRaw: row.created_at ?? undefined,
   };
 }
 
@@ -335,6 +351,7 @@ function mapRowToAssignment(
     student: resolvedStudentName,
     due: formatShortDueDate(row.due_date),
     dueDateRaw: row.due_date ?? undefined,
+    createdAtRaw: row.created_at ?? undefined,
     description: row.description?.trim() || "No description provided.",
     comments: assignmentStudentId
       ? commentsByAssignmentStudentId[assignmentStudentId] ?? []
@@ -357,6 +374,11 @@ function parseAssignmentDueDate(value: AssignmentCardData): Date | null {
   }
 
   return null;
+}
+
+async function getServerClient(): Promise<SupabaseServerClient> {
+  const { createClient } = await import("./supabase/server");
+  return createClient();
 }
 
 export function buildTeacherColumnsFromAssignments(
@@ -387,7 +409,7 @@ export async function getTeacherColumnsFromSupabase(
   mappingDefaults: AssignmentMappingDefaults = {},
   viewer?: DashboardViewer,
 ): Promise<KanbanColumnData[]> {
-  const supabase = await createClient();
+  const supabase = await getServerClient();
 
   let ownedStudentIds: string[] | null = null;
   if (viewer) {
@@ -570,7 +592,7 @@ export async function getTeacherColumnsFromSupabase(
 export async function getDashboardContextFromSupabase(
   viewer: DashboardViewer,
 ): Promise<DashboardSupabaseContext> {
-  const supabase = await createClient();
+  const supabase = await getServerClient();
   await assertAuthenticatedViewer(supabase, viewer);
 
   const { data: profileData, error: profileError } = await supabase
@@ -691,6 +713,72 @@ export async function getDashboardContextFromSupabase(
     milestoneTitle: null,
     milestoneCount: null,
   };
+}
+
+export async function getTeacherAssignmentTargetOptions(
+  viewer: DashboardViewer,
+): Promise<AssignmentTargetOption[]> {
+  if (viewer.role !== "teacher") {
+    return [];
+  }
+
+  const supabase = await getServerClient();
+  await assertAuthenticatedViewer(supabase, viewer);
+
+  const { data: classData, error: classError } = await supabase
+    .from("classes")
+    .select("id, name")
+    .eq("teacher_id", viewer.profileId)
+    .order("name", { ascending: true });
+
+  if (classError) {
+    throw new Error(
+      `classes: ${classError.message ?? "Unknown query error"}`,
+    );
+  }
+
+  const classes = (classData ?? []) as SupabaseClassTargetRow[];
+  if (classes.length === 0) {
+    return [];
+  }
+
+  const classNameById = Object.fromEntries(
+    classes.map((classRow) => [classRow.id, normalizeText(classRow.name) ?? "Unnamed class"]),
+  );
+
+  const classOptions: AssignmentTargetOption[] = classes.map((classRow) => ({
+    value: `class:${classRow.id}`,
+    label: `Class: ${classNameById[classRow.id]}`,
+  }));
+
+  const classIds = classes.map((classRow) => classRow.id);
+
+  const { data: studentData, error: studentError } = await supabase
+    .from("students")
+    .select("id, class_id, full_name")
+    .in("class_id", classIds)
+    .order("full_name", { ascending: true });
+
+  if (studentError) {
+    throw new Error(
+      `students: ${studentError.message ?? "Unknown query error"}`,
+    );
+  }
+
+  const students = (studentData ?? []) as SupabaseStudentTargetRow[];
+  const studentOptions: AssignmentTargetOption[] = students.map((student) => {
+    const studentName = normalizeText(student.full_name) ?? "Unnamed student";
+    const className = student.class_id ? classNameById[student.class_id] : null;
+
+    return {
+      value: `student:${student.id}`,
+      label: className
+        ? `Student: ${studentName} (${className})`
+        : `Student: ${studentName}`,
+    };
+  });
+
+  return [...classOptions, ...studentOptions];
 }
 
 type ParentMetricsInput = {

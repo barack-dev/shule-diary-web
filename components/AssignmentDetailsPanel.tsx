@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { getAssignmentAttentionBadges } from "../lib/assignment-priority";
 import type { AssignmentCardData, AssignmentComment } from "../lib/types";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
   onAddComment: (message: string) => Promise<void>;
   isSavingComment?: boolean;
   commentSaveError?: string | null;
+  commentSaveSuccess?: string | null;
   commentsTitle?: string;
   commentPlaceholder?: string;
   commentButtonLabel?: string;
@@ -22,11 +24,13 @@ export default function AssignmentDetailsPanel({
   onAddComment,
   isSavingComment = false,
   commentSaveError,
+  commentSaveSuccess,
   commentsTitle = "Comments",
   commentPlaceholder = "Write a comment...",
   commentButtonLabel = "Add comment",
 }: Props) {
   const [draft, setDraft] = useState("");
+  const attentionBadges = getAssignmentAttentionBadges(assignment);
 
   const commentCountLabel = useMemo(() => {
     return `${comments.length} comment${comments.length === 1 ? "" : "s"}`;
@@ -54,6 +58,22 @@ export default function AssignmentDetailsPanel({
           <p className="mt-1 text-sm text-slate-600">
             {assignment.subject} · {assignment.student}
           </p>
+          {attentionBadges.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {attentionBadges.map((badge) => (
+                <span
+                  key={badge.kind}
+                  className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                    badge.tone === "high"
+                      ? "bg-rose-100 text-rose-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {badge.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
         <button
           type="button"
@@ -133,12 +153,14 @@ export default function AssignmentDetailsPanel({
         />
         {commentSaveError ? (
           <p className="mt-2 text-sm text-rose-700">{commentSaveError}</p>
+        ) : commentSaveSuccess ? (
+          <p className="mt-2 text-sm text-emerald-700">{commentSaveSuccess}</p>
         ) : null}
         <div className="mt-3 flex justify-end">
           <button
             type="button"
             onClick={handleAddComment}
-            disabled={isSavingComment}
+            disabled={isSavingComment || draft.trim().length === 0}
             className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
           >
             {isSavingComment ? "Saving..." : commentButtonLabel}

@@ -39,6 +39,7 @@ export interface AssignmentComment {
   authorRole: CommentAuthorRole;
   message: string;
   createdAt: string;
+  createdAtRaw?: string;
 }
 
 export interface AssignmentCardData {
@@ -49,6 +50,7 @@ export interface AssignmentCardData {
   student: string;
   due: string;
   dueDateRaw?: string;
+  createdAtRaw?: string;
   description: string;
   comments: AssignmentComment[];
   status: AssignmentStatus;

@@ -8,8 +8,10 @@ import {
   buildTeacherSummaryMetrics,
   getDashboardContextFromSupabase,
   getEmptyTeacherColumns,
+  getTeacherAssignmentTargetOptions,
   getTeacherColumnsFromSupabase,
 } from "../../lib/dashboard-assignments";
+import type { AssignmentTargetOption } from "../../lib/assignment-creation";
 import { getAuthProfileResult } from "../../lib/supabase/auth-profile";
 import type {
   DashboardDirectoryData,
@@ -35,6 +37,7 @@ type DashboardLoadSuccess = {
   status: "ready";
   teacherColumns: KanbanColumnData[];
   teacherMetrics: SummaryMetric[];
+  teacherAssignmentTargets: AssignmentTargetOption[];
   parentColumns: KanbanColumnData[];
   dashboardContext: DashboardDirectoryData;
   parentProfile: ParentProfile;
@@ -65,6 +68,7 @@ async function loadTeacherDashboardData(authenticatedProfile: {
       teacherName: dashboardContext.teacherName ?? undefined,
       parentName: dashboardContext.parentName ?? undefined,
     }, viewer);
+    const teacherAssignmentTargets = await getTeacherAssignmentTargetOptions(viewer);
     if (isDevelopment) {
       const loadedAssignments = columns.reduce(
         (total, column) => total + column.items.length,
@@ -94,6 +98,7 @@ async function loadTeacherDashboardData(authenticatedProfile: {
       status: "ready",
       teacherColumns,
       teacherMetrics: buildTeacherSummaryMetrics(teacherColumns),
+      teacherAssignmentTargets,
       parentColumns: teacherColumns,
       dashboardContext,
       parentProfile: resolvedParentProfile,
@@ -198,6 +203,7 @@ export default async function DashboardPage() {
       dashboardContext={dashboardData.dashboardContext}
       teacherMetrics={dashboardData.teacherMetrics}
       teacherColumns={dashboardData.teacherColumns}
+      teacherAssignmentTargets={dashboardData.teacherAssignmentTargets}
       parentProfile={dashboardData.parentProfile}
       parentMetrics={dashboardData.parentMetrics}
       parentColumns={dashboardData.parentColumns}

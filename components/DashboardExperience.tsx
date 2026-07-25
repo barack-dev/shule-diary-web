@@ -9,6 +9,7 @@ import type {
   ParentSummaryMetric,
   SummaryMetric,
 } from "../lib/types";
+import type { AssignmentTargetOption } from "../lib/assignment-creation";
 import DashboardHeader from "./DashboardHeader";
 import KanbanBoard from "./KanbanBoard";
 import LogoutButton from "./LogoutButton";
@@ -16,6 +17,7 @@ import ParentDashboard from "./ParentDashboard";
 import RoleSwitcher from "./RoleSwitcher";
 import Sidebar from "./Sidebar";
 import SummaryCard from "./SummaryCard";
+import TeacherAssignmentCreateForm from "./TeacherAssignmentCreateForm";
 
 type Props = {
   initialRole: DashboardRole;
@@ -24,6 +26,7 @@ type Props = {
   dashboardContext: DashboardDirectoryData;
   teacherMetrics: SummaryMetric[];
   teacherColumns: KanbanColumnData[];
+  teacherAssignmentTargets?: AssignmentTargetOption[];
   parentProfile: ParentProfile;
   parentMetrics: ParentSummaryMetric[];
   parentColumns: KanbanColumnData[];
@@ -36,6 +39,7 @@ export default function DashboardExperience({
   dashboardContext,
   teacherMetrics,
   teacherColumns,
+  teacherAssignmentTargets = [],
   parentProfile,
   parentMetrics,
   parentColumns,
@@ -102,6 +106,8 @@ export default function DashboardExperience({
                   <SummaryCard key={metric.label} metric={metric} />
                 ))}
               </section>
+
+              <TeacherAssignmentCreateForm targetOptions={teacherAssignmentTargets} />
 
               <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <KanbanBoard

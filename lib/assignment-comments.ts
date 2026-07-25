@@ -41,6 +41,7 @@ function mapCommentRowToComment(row: SupabaseAssignmentCommentRow): AssignmentCo
     authorRole: "Teacher",
     message: row.comment?.trim() || "",
     createdAt: formatCommentCreatedAt(row.created_at),
+    createdAtRaw: row.created_at ?? undefined,
   };
 }
 
