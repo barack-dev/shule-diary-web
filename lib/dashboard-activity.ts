@@ -1,4 +1,5 @@
 import { isAssignmentDueSoon, isAssignmentOverdue } from "./assignment-filters.ts";
+import { getAssignmentDueDate } from "./assignment-dates.ts";
 import type { AssignmentCardData, AssignmentComment, KanbanColumnData } from "./types";
 
 export type DashboardActivityType =
@@ -23,6 +24,12 @@ type AssignmentCommentContext = {
 };
 
 const MAX_RECENT_ITEMS_PER_GROUP = 2;
+const MAX_ACTIVITY_ITEMS = 6;
+
+type DashboardActivityCandidate = DashboardActivityItem & {
+  assignmentKey: string;
+  sortTimestamp: number | null;
+};
 
 function parseDateValue(value: string | null | undefined): Date | null {
   const normalized = value?.trim();
@@ -36,17 +43,6 @@ function parseDateValue(value: string | null | undefined): Date | null {
   }
 
   return parsed;
-}
-
-function parseAssignmentDueDate(assignment: AssignmentCardData): Date | null {
-  if (assignment.dueDateRaw) {
-    const parsedRawDate = new Date(`${assignment.dueDateRaw}T00:00:00`);
-    if (!Number.isNaN(parsedRawDate.getTime())) {
-      return parsedRawDate;
-    }
-  }
-
-  return parseDateValue(assignment.due);
 }
 
 function parseAssignmentCreatedAt(assignment: AssignmentCardData): Date | null {
@@ -85,7 +81,54 @@ function getAllAssignments(columns: KanbanColumnData[]): AssignmentCardData[] {
   return columns.flatMap((column) => column.items);
 }
 
-function buildRecentCommentActivities(assignments: AssignmentCardData[]): DashboardActivityItem[] {
+function byActivitySortTimestampDescending(
+  left: DashboardActivityCandidate,
+  right: DashboardActivityCandidate,
+): number {
+  const leftValue = left.sortTimestamp ?? Number.NEGATIVE_INFINITY;
+  const rightValue = right.sortTimestamp ?? Number.NEGATIVE_INFINITY;
+  return rightValue - leftValue;
+}
+
+function getAssignmentActivityKey(assignment: AssignmentCardData): string {
+  return (
+    assignment.assignmentStudentId?.trim() ||
+    assignment.id?.trim() ||
+    `${assignment.title.trim().toLowerCase()}:${assignment.student.trim().toLowerCase()}`
+  );
+}
+
+function toActivityItem(candidate: DashboardActivityCandidate): DashboardActivityItem {
+  return {
+    id: candidate.id,
+    type: candidate.type,
+    title: candidate.title,
+    description: candidate.description,
+    meta: candidate.meta,
+    timestamp: candidate.timestamp,
+  };
+}
+
+function compactActivityItems(
+  candidates: DashboardActivityCandidate[],
+): DashboardActivityItem[] {
+  const seenAssignmentKeys = new Set<string>();
+
+  return candidates
+    .sort(byActivitySortTimestampDescending)
+    .filter((candidate) => {
+      if (seenAssignmentKeys.has(candidate.assignmentKey)) {
+        return false;
+      }
+
+      seenAssignmentKeys.add(candidate.assignmentKey);
+      return true;
+    })
+    .slice(0, MAX_ACTIVITY_ITEMS)
+    .map(toActivityItem);
+}
+
+function buildRecentCommentActivities(assignments: AssignmentCardData[]): DashboardActivityCandidate[] {
   const recentComments = assignments
     .flatMap<AssignmentCommentContext>((assignment) =>
       assignment.comments.map((comment) => {
@@ -107,18 +150,20 @@ function buildRecentCommentActivities(assignments: AssignmentCardData[]): Dashbo
 
     return {
       id: `comment:${comment.id}`,
+      assignmentKey: getAssignmentActivityKey(assignment),
       type: "comment",
       title: `${comment.authorName} commented`,
-      description: `${assignment.title} · ${preview}`,
+      description: `${assignment.title} - ${preview}`,
       meta: comment.createdAt || "New comment",
       timestamp,
+      sortTimestamp: timestamp,
     };
   });
 }
 
 function buildRecentCreatedAssignmentActivities(
   assignments: AssignmentCardData[],
-): DashboardActivityItem[] {
+): DashboardActivityCandidate[] {
   return assignments
     .map((assignment) => {
       const createdAt = parseAssignmentCreatedAt(assignment);
@@ -136,11 +181,13 @@ function buildRecentCreatedAssignmentActivities(
 
       return {
         id: `created:${assignment.id ?? assignment.title}`,
+        assignmentKey: getAssignmentActivityKey(assignment),
         type: "assignment-created",
         title: `New assignment: ${assignment.title}`,
-        description: `${assignment.subject} · ${assignment.student}`,
+        description: `${assignment.subject} - ${assignment.student}`,
         meta: `Created ${createdLabel}`,
         timestamp,
+        sortTimestamp: timestamp,
       };
     });
 }
@@ -148,12 +195,12 @@ function buildRecentCreatedAssignmentActivities(
 function buildDueSoonActivities(
   assignments: AssignmentCardData[],
   now: Date,
-): DashboardActivityItem[] {
+): DashboardActivityCandidate[] {
   return assignments
     .filter((assignment) => isAssignmentDueSoon(assignment, now))
     .map((assignment) => ({
       assignment,
-      dueDate: parseAssignmentDueDate(assignment),
+      dueDate: getAssignmentDueDate(assignment),
     }))
     .sort((left, right) => {
       const leftValue = left.dueDate?.getTime() ?? Number.POSITIVE_INFINITY;
@@ -163,23 +210,25 @@ function buildDueSoonActivities(
     .slice(0, MAX_RECENT_ITEMS_PER_GROUP)
     .map(({ assignment, dueDate }) => ({
       id: `due-soon:${assignment.id ?? assignment.title}`,
+      assignmentKey: getAssignmentActivityKey(assignment),
       type: "due-soon",
       title: `Due soon: ${assignment.title}`,
-      description: `${assignment.subject} · ${assignment.student}`,
+      description: `${assignment.subject} - ${assignment.student}`,
       meta: `Due ${assignment.due}`,
       timestamp: dueDate ? dueDate.getTime() : null,
+      sortTimestamp: null,
     }));
 }
 
 function buildOverdueActivities(
   assignments: AssignmentCardData[],
   now: Date,
-): DashboardActivityItem[] {
+): DashboardActivityCandidate[] {
   return assignments
     .filter((assignment) => isAssignmentOverdue(assignment, now))
     .map((assignment) => ({
       assignment,
-      dueDate: parseAssignmentDueDate(assignment),
+      dueDate: getAssignmentDueDate(assignment),
     }))
     .sort((left, right) => {
       const leftValue = left.dueDate?.getTime() ?? Number.NEGATIVE_INFINITY;
@@ -189,11 +238,13 @@ function buildOverdueActivities(
     .slice(0, MAX_RECENT_ITEMS_PER_GROUP)
     .map(({ assignment, dueDate }) => ({
       id: `overdue:${assignment.id ?? assignment.title}`,
+      assignmentKey: getAssignmentActivityKey(assignment),
       type: "overdue",
       title: `Overdue: ${assignment.title}`,
-      description: `${assignment.subject} · ${assignment.student}`,
+      description: `${assignment.subject} - ${assignment.student}`,
       meta: `Due ${assignment.due}`,
       timestamp: dueDate ? dueDate.getTime() : null,
+      sortTimestamp: null,
     }));
 }
 
@@ -208,10 +259,10 @@ export function buildRecentActivity(
   const dueSoonActivities = buildDueSoonActivities(assignments, now);
   const overdueActivities = buildOverdueActivities(assignments, now);
 
-  return [
+  return compactActivityItems([
     ...commentActivities,
     ...createdActivities,
     ...dueSoonActivities,
     ...overdueActivities,
-  ];
+  ]);
 }

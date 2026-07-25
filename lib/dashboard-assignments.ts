@@ -9,6 +9,12 @@ import type {
   SummaryMetric,
 } from "./types";
 import type { AssignmentTargetOption } from "./assignment-creation";
+import {
+  getAssignmentDueDate,
+  getDueSoonThreshold,
+  getStartOfLocalDay,
+  parseDateOnlyValue,
+} from "./assignment-dates.ts";
 
 type SupabaseServerClient = Awaited<
   ReturnType<typeof import("./supabase/server").createClient>
@@ -147,8 +153,8 @@ function formatShortDueDate(dueDate: string | null): string {
     return "No due date";
   }
 
-  const parsedDate = new Date(`${dueDate}T00:00:00`);
-  if (Number.isNaN(parsedDate.getTime())) {
+  const parsedDate = parseDateOnlyValue(dueDate);
+  if (!parsedDate) {
     return dueDate;
   }
 
@@ -358,22 +364,6 @@ function mapRowToAssignment(
       : [],
     status,
   };
-}
-
-function parseAssignmentDueDate(value: AssignmentCardData): Date | null {
-  if (value.dueDateRaw) {
-    const parsedRawDate = new Date(`${value.dueDateRaw}T00:00:00`);
-    if (!Number.isNaN(parsedRawDate.getTime())) {
-      return parsedRawDate;
-    }
-  }
-
-  const fallbackParsedDate = new Date(value.due);
-  if (!Number.isNaN(fallbackParsedDate.getTime())) {
-    return fallbackParsedDate;
-  }
-
-  return null;
 }
 
 async function getServerClient(): Promise<SupabaseServerClient> {
@@ -812,10 +802,9 @@ export function buildParentSummaryMetrics(
       assignment.status === "Overdue",
   ).length;
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const dueSoonThreshold = new Date(startOfToday);
-  dueSoonThreshold.setDate(dueSoonThreshold.getDate() + 3);
+  const now = new Date();
+  const startOfToday = getStartOfLocalDay(now);
+  const dueSoonThreshold = getDueSoonThreshold(now);
 
   const dueSoon = scopedAssignments.filter((assignment) => {
     if (
@@ -826,7 +815,7 @@ export function buildParentSummaryMetrics(
       return false;
     }
 
-    const dueDate = parseAssignmentDueDate(assignment);
+    const dueDate = getAssignmentDueDate(assignment);
     if (!dueDate) {
       return false;
     }
@@ -873,7 +862,10 @@ export function getEmptyTeacherColumns(): KanbanColumnData[] {
   return createEmptyTeacherColumns();
 }
 
-export function buildTeacherSummaryMetrics(columns: KanbanColumnData[]): SummaryMetric[] {
+export function buildTeacherSummaryMetrics(
+  columns: KanbanColumnData[],
+  now: Date = new Date(),
+): SummaryMetric[] {
   const assignments = columns.flatMap((column) => column.items);
   const students = new Set(
     assignments
@@ -892,14 +884,23 @@ export function buildTeacherSummaryMetrics(columns: KanbanColumnData[]): Summary
     (assignment) => assignment.status === "Submitted",
   ).length;
 
-  const noDueDateCount = assignments.filter((assignment) => {
-    const dueValue = assignment.due.trim().toLowerCase();
-    return dueValue.length === 0 || dueValue === "no due date";
-  }).length;
+  const startOfToday = getStartOfLocalDay(now);
+  const needsSupport = assignments.filter((assignment) => {
+    if (
+      assignment.status === "Submitted" ||
+      assignment.status === "Reviewed" ||
+      assignment.status === "Completed"
+    ) {
+      return false;
+    }
 
-  // TODO: Include overdue assignment detection once due dates are stored in a
-  // stable machine-readable format (e.g., full ISO date) in card data.
-  const needsSupport = noDueDateCount;
+    if (assignment.status === "Needs Support" || assignment.status === "Overdue") {
+      return true;
+    }
+
+    const dueDate = getAssignmentDueDate(assignment);
+    return Boolean(dueDate && dueDate < startOfToday);
+  }).length;
 
   return [
     { label: "Total Students", value: String(students.size) },

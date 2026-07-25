@@ -10,6 +10,7 @@ import type {
   SummaryMetric,
 } from "../lib/types";
 import type { AssignmentTargetOption } from "../lib/assignment-creation";
+import { buildKanbanBoardStateKey } from "../lib/kanban-board-state";
 import DashboardHeader from "./DashboardHeader";
 import KanbanBoard from "./KanbanBoard";
 import LogoutButton from "./LogoutButton";
@@ -55,6 +56,7 @@ export default function DashboardExperience({
     setRole(nextRole);
   };
   const isParentView = activeRole === "parent";
+  const teacherBoardKey = buildKanbanBoardStateKey(teacherColumns);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -111,6 +113,7 @@ export default function DashboardExperience({
 
               <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <KanbanBoard
+                  key={`teacher-${teacherBoardKey}`}
                   columns={teacherColumns}
                   commentAuthor={{
                     name: dashboardContext.teacherName ?? "Teacher",

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTeacherColumnsFromAssignments } from "../lib/dashboard-assignments.ts";
+import {
+  buildTeacherColumnsFromAssignments,
+  buildTeacherSummaryMetrics,
+} from "../lib/dashboard-assignments.ts";
 import type { AssignmentComment } from "../lib/types.ts";
 
 const SAMPLE_COMMENT: AssignmentComment = {
@@ -10,6 +13,8 @@ const SAMPLE_COMMENT: AssignmentComment = {
   message: "Please show your working for question 3.",
   createdAt: "Jul 25, 10:30",
 };
+
+const TODAY = new Date("2026-07-25T10:00:00.000Z");
 
 test("maps assignment detail fields and comments into teacher columns", () => {
   const columns = buildTeacherColumnsFromAssignments(
@@ -80,4 +85,50 @@ test("uses safe fallback values for missing assignment detail fields", () => {
   assert.equal(card.due, "No due date");
   assert.equal(card.status, "Assigned");
   assert.deepEqual(card.comments, []);
+});
+
+test("teacher summary needs support counts explicit and overdue support risk", () => {
+  const columns = buildTeacherColumnsFromAssignments([
+    {
+      assignment_student_id: "as-3",
+      assignment_id: "a-3",
+      student_id: "s-3",
+      student_name: "Amina Otieno",
+      title: "Past Due Work",
+      subject: "Math",
+      due_date: "2026-07-20",
+      status: "assigned",
+      description: "Finish the worksheet.",
+      created_at: "2026-07-10T08:00:00.000Z",
+    },
+    {
+      assignment_student_id: "as-4",
+      assignment_id: "a-4",
+      student_id: "s-4",
+      student_name: "Brian Otieno",
+      title: "Support Work",
+      subject: "English",
+      due_date: "2026-08-01",
+      status: "needs_support",
+      description: "Revise the draft.",
+      created_at: "2026-07-15T08:00:00.000Z",
+    },
+    {
+      assignment_student_id: "as-5",
+      assignment_id: "a-5",
+      student_id: "s-5",
+      student_name: "Chloe Otieno",
+      title: "Completed Work",
+      subject: "Science",
+      due_date: "2026-07-20",
+      status: "completed",
+      description: "Already complete.",
+      created_at: "2026-07-15T08:00:00.000Z",
+    },
+  ]);
+
+  const metrics = buildTeacherSummaryMetrics(columns, TODAY);
+  const needsSupport = metrics.find((metric) => metric.label === "Needs Support");
+
+  assert.equal(needsSupport?.value, "2");
 });

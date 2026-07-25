@@ -1,4 +1,9 @@
 import type { AssignmentCardData, AssignmentStatus, KanbanColumnData } from "./types";
+import {
+  getAssignmentDueDate,
+  getDueSoonThreshold,
+  getStartOfLocalDay,
+} from "./assignment-dates.ts";
 
 export type AssignmentDueDateGroup = "all" | "due-soon" | "overdue";
 
@@ -19,28 +24,6 @@ function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function parseAssignmentDueDate(assignment: AssignmentCardData): Date | null {
-  if (assignment.dueDateRaw) {
-    const parsedRawDate = new Date(`${assignment.dueDateRaw}T00:00:00`);
-    if (!Number.isNaN(parsedRawDate.getTime())) {
-      return parsedRawDate;
-    }
-  }
-
-  const fallbackParsedDate = new Date(assignment.due);
-  if (!Number.isNaN(fallbackParsedDate.getTime())) {
-    return fallbackParsedDate;
-  }
-
-  return null;
-}
-
-function getStartOfToday(now: Date): Date {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  return start;
-}
-
 export function isAssignmentDueSoon(
   assignment: AssignmentCardData,
   now: Date = new Date(),
@@ -49,14 +32,13 @@ export function isAssignmentDueSoon(
     return false;
   }
 
-  const dueDate = parseAssignmentDueDate(assignment);
+  const dueDate = getAssignmentDueDate(assignment);
   if (!dueDate) {
     return false;
   }
 
-  const startOfToday = getStartOfToday(now);
-  const dueSoonThreshold = new Date(startOfToday);
-  dueSoonThreshold.setDate(dueSoonThreshold.getDate() + 3);
+  const startOfToday = getStartOfLocalDay(now);
+  const dueSoonThreshold = getDueSoonThreshold(now);
 
   return dueDate >= startOfToday && dueDate <= dueSoonThreshold;
 }
@@ -69,12 +51,12 @@ export function isAssignmentOverdue(
     return false;
   }
 
-  const dueDate = parseAssignmentDueDate(assignment);
+  const dueDate = getAssignmentDueDate(assignment);
   if (!dueDate) {
     return false;
   }
 
-  const startOfToday = getStartOfToday(now);
+  const startOfToday = getStartOfLocalDay(now);
   return dueDate < startOfToday;
 }
 

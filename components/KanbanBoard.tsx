@@ -19,6 +19,8 @@ import type {
   KanbanColumnData,
 } from "../lib/types";
 import AssignmentDetailsPanel from "./AssignmentDetailsPanel";
+import AssignmentProgressPanel from "./AssignmentProgressPanel";
+import AssignmentQuickStatsPanel from "./AssignmentQuickStatsPanel";
 import AssignmentCard from "./AssignmentCard";
 import KanbanColumn from "./KanbanColumn";
 import RecentActivityPanel from "./RecentActivityPanel";
@@ -474,6 +476,10 @@ export default function KanbanBoard({
           </div>
         </div>
       </div>
+
+      <AssignmentQuickStatsPanel columns={columnsWithLiveComments} />
+
+      <AssignmentProgressPanel columns={columnsWithLiveComments} />
 
       <RecentActivityPanel columns={columnsWithLiveComments} />
 

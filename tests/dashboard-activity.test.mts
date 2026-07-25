@@ -28,10 +28,11 @@ test("buildRecentActivity derives items from assignments, comments, due soon, an
       title: "Assigned",
       items: [
         createAssignment({
-          id: "a-1",
-          title: "Fractions Homework",
+          id: "comment-assignment",
+          assignmentStudentId: "comment-assignment-student",
+          title: "Commented Homework",
           createdAtRaw: "2026-07-25T07:00:00.000Z",
-          dueDateRaw: "2026-07-26",
+          dueDateRaw: "2026-08-10",
           comments: [
             {
               id: "c-1",
@@ -44,11 +45,28 @@ test("buildRecentActivity derives items from assignments, comments, due soon, an
           ],
         }),
         createAssignment({
-          id: "a-2",
+          id: "created-assignment",
+          assignmentStudentId: "created-assignment-student",
+          title: "New Reading Log",
+          subject: "English",
+          student: "Amina Otieno",
+          createdAtRaw: "2026-07-24T10:00:00.000Z",
+          dueDateRaw: "2026-08-02",
+        }),
+        createAssignment({
+          id: "due-soon-assignment",
+          assignmentStudentId: "due-soon-assignment-student",
+          title: "Fractions Homework",
+          createdAtRaw: undefined,
+          dueDateRaw: "2026-07-26",
+        }),
+        createAssignment({
+          id: "overdue-assignment",
+          assignmentStudentId: "overdue-assignment-student",
           title: "Plant Reflection",
           subject: "Science",
           student: "Brian Njoroge",
-          createdAtRaw: "2026-07-24T10:00:00.000Z",
+          createdAtRaw: undefined,
           dueDateRaw: "2026-07-20",
         }),
       ],
@@ -81,13 +99,14 @@ test("buildRecentActivity returns empty when there are no assignments", () => {
   assert.deepEqual(activity, []);
 });
 
-test("buildRecentActivity limits each event group for compact display", () => {
+test("buildRecentActivity globally sorts and keeps one item per assignment", () => {
   const columns: KanbanColumnData[] = [
     {
       title: "Assigned",
       items: [
         createAssignment({
           id: "a-1",
+          assignmentStudentId: "as-1",
           createdAtRaw: "2026-07-25T10:00:00.000Z",
           dueDateRaw: "2026-07-26",
           comments: [
@@ -103,6 +122,7 @@ test("buildRecentActivity limits each event group for compact display", () => {
         }),
         createAssignment({
           id: "a-2",
+          assignmentStudentId: "as-2",
           createdAtRaw: "2026-07-25T09:00:00.000Z",
           dueDateRaw: "2026-07-27",
           comments: [
@@ -118,18 +138,10 @@ test("buildRecentActivity limits each event group for compact display", () => {
         }),
         createAssignment({
           id: "a-3",
-          createdAtRaw: "2026-07-25T08:00:00.000Z",
+          assignmentStudentId: "as-3",
+          createdAtRaw: "2026-07-25T11:00:00.000Z",
           dueDateRaw: "2026-07-20",
-          comments: [
-            {
-              id: "c-3",
-              authorName: "Teacher C",
-              authorRole: "Teacher",
-              message: "Comment three",
-              createdAt: "Jul 25, 08:00",
-              createdAtRaw: "2026-07-25T08:00:00.000Z",
-            },
-          ],
+          comments: [],
         }),
       ],
     },
@@ -138,8 +150,12 @@ test("buildRecentActivity limits each event group for compact display", () => {
   const activity = buildRecentActivity(columns, NOW);
 
   const commentItems = activity.filter((item) => item.type === "comment");
-  const createdItems = activity.filter((item) => item.type === "assignment-created");
 
   assert.equal(commentItems.length, 2);
-  assert.equal(createdItems.length, 2);
+  assert.deepEqual(
+    activity.map((item) => item.id),
+    ["created:a-3", "comment:c-1", "comment:c-2"],
+  );
+  assert.equal(activity.some((item) => item.id === "created:a-1"), false);
+  assert.equal(activity.some((item) => item.id === "created:a-2"), false);
 });

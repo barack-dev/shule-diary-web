@@ -175,6 +175,17 @@ test("due soon and overdue helpers use dueDateRaw and ignore completed statuses"
   assert.equal(isAssignmentOverdue(completedAssignment, NOW), false);
 });
 
+test("due soon and overdue helpers ignore display-only due labels", () => {
+  const displayOnlyDate = createAssignment({
+    id: "display-only-date",
+    due: "Jul 26",
+    dueDateRaw: undefined,
+  });
+
+  assert.equal(isAssignmentDueSoon(displayOnlyDate, NOW), false);
+  assert.equal(isAssignmentOverdue(displayOnlyDate, NOW), false);
+});
+
 test("filterKanbanColumns preserves column layout while filtering assignments", () => {
   const filtered = filterKanbanColumns(
     KANBAN_COLUMNS,

@@ -3,6 +3,7 @@ import type {
   ParentProfile,
   ParentSummaryMetric,
 } from "../lib/types";
+import { buildKanbanBoardStateKey } from "../lib/kanban-board-state";
 import KanbanBoard from "./KanbanBoard";
 import ParentSummaryCard from "./ParentSummaryCard";
 
@@ -15,6 +16,7 @@ type Props = {
 
 export default function ParentDashboard({ profile, metrics, columns, parentName }: Props) {
   const resolvedParentName = parentName?.trim() || "Parent";
+  const boardKey = buildKanbanBoardStateKey(columns);
 
   return (
     <>
@@ -53,6 +55,7 @@ export default function ParentDashboard({ profile, metrics, columns, parentName 
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <KanbanBoard
+          key={`parent-${boardKey}`}
           columns={columns}
           title={`${profile.childName.split(" ")[0]}'s assignments`}
           description="Open an assignment to read instructions and see the latest teacher feedback."
