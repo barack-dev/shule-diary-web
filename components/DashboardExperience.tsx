@@ -119,6 +119,7 @@ export default function DashboardExperience({
                     name: dashboardContext.teacherName ?? "Teacher",
                     role: "Teacher",
                   }}
+                  canReviewAssignments
                 />
               </section>
             </>

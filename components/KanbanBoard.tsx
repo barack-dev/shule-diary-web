@@ -10,6 +10,11 @@ import {
   type AssignmentDueDateGroup,
 } from "../lib/assignment-filters";
 import { insertAssignmentComment } from "../lib/assignment-comments";
+import {
+  applyTeacherReviewStatus,
+  canReviewSubmittedAssignment,
+  type AssignmentReviewRequest,
+} from "../lib/assignment-review";
 import { updateAssignmentStatus } from "../lib/assignment-status";
 import type {
   AssignmentCardData,
@@ -37,6 +42,7 @@ type Props = {
   commentsTitle?: string;
   commentPlaceholder?: string;
   commentButtonLabel?: string;
+  canReviewAssignments?: boolean;
 };
 
 type DragEndOverData = {
@@ -90,6 +96,7 @@ export default function KanbanBoard({
   commentsTitle,
   commentPlaceholder,
   commentButtonLabel,
+  canReviewAssignments = false,
 }: Props) {
   const isMounted = useSyncExternalStore(
     subscribeToClientHydration,
@@ -114,6 +121,9 @@ export default function KanbanBoard({
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [commentSaveError, setCommentSaveError] = useState<string | null>(null);
   const [commentSaveSuccess, setCommentSaveSuccess] = useState<string | null>(null);
+  const [isSavingReview, setIsSavingReview] = useState(false);
+  const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
+  const [reviewSaveSuccess, setReviewSaveSuccess] = useState<string | null>(null);
   const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
   const [statusSaveSuccess, setStatusSaveSuccess] = useState<string | null>(null);
   const [statusSaveInFlightCount, setStatusSaveInFlightCount] = useState(0);
@@ -184,6 +194,82 @@ export default function KanbanBoard({
       throw new Error("COMMENT_SAVE_FAILED");
     } finally {
       setIsSavingComment(false);
+    }
+  };
+
+  const handleReviewAssignment = async ({
+    status,
+    feedbackMessage,
+  }: AssignmentReviewRequest) => {
+    const assignment = selectedAssignment;
+    const assignmentId = assignment?.id?.trim() ?? "";
+    const assignmentStudentId = assignment?.assignmentStudentId?.trim() ?? "";
+
+    if (
+      !assignment ||
+      !assignmentId ||
+      !assignmentStudentId ||
+      !canReviewSubmittedAssignment(assignment, canReviewAssignments)
+    ) {
+      setReviewSaveError("This assignment is not ready for teacher review. Please refresh and try again.");
+      setReviewSaveSuccess(null);
+      throw new Error("REVIEW_NOT_AVAILABLE");
+    }
+
+    const trimmedFeedback = feedbackMessage.trim();
+    let statusSaved = false;
+
+    setReviewSaveError(null);
+    setReviewSaveSuccess(null);
+    setIsSavingReview(true);
+
+    try {
+      await updateAssignmentStatus({
+        assignmentStudentId,
+        status,
+      });
+      statusSaved = true;
+
+      setBoardColumns((currentColumns) =>
+        applyTeacherReviewStatus(currentColumns, assignmentId, status),
+      );
+      setStatusSaveError(null);
+      setStatusSaveSuccess("Status saved.");
+
+      if (trimmedFeedback) {
+        const newComment = await insertAssignmentComment({
+          assignmentStudentId,
+          authorName: commentAuthor.name,
+          authorRole: commentAuthor.role,
+          message: trimmedFeedback,
+        });
+
+        setCommentsByAssignment((previous) => {
+          const existing = previous[assignmentId] ?? assignment.comments;
+          return {
+            ...previous,
+            [assignmentId]: [...existing, newComment],
+          };
+        });
+      }
+
+      setReviewSaveSuccess(trimmedFeedback ? "Review saved with feedback." : "Review saved.");
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error("[ShuleDiary] Unable to save teacher review:", error.message);
+      } else {
+        console.error("[ShuleDiary] Unable to save teacher review:", error);
+      }
+
+      setReviewSaveSuccess(null);
+      setReviewSaveError(
+        statusSaved
+          ? "Status saved, but feedback was not saved. Use the comment box below to add feedback."
+          : "Could not save teacher review. Please try again.",
+      );
+      throw new Error("REVIEW_SAVE_FAILED");
+    } finally {
+      setIsSavingReview(false);
     }
   };
 
@@ -274,12 +360,16 @@ export default function KanbanBoard({
     setSelectedAssignmentId(assignment.id ?? null);
     setCommentSaveError(null);
     setCommentSaveSuccess(null);
+    setReviewSaveError(null);
+    setReviewSaveSuccess(null);
   };
 
   const handleCloseAssignment = () => {
     setSelectedAssignmentId(null);
     setCommentSaveError(null);
     setCommentSaveSuccess(null);
+    setReviewSaveError(null);
+    setReviewSaveSuccess(null);
   };
 
   const computeDragResult = (
@@ -646,6 +736,11 @@ export default function KanbanBoard({
             commentsTitle={commentsTitle}
             commentPlaceholder={commentPlaceholder}
             commentButtonLabel={commentButtonLabel}
+            canReviewAssignment={canReviewAssignments}
+            onReviewAssignment={handleReviewAssignment}
+            isSavingReview={isSavingReview}
+            reviewSaveError={reviewSaveError}
+            reviewSaveSuccess={reviewSaveSuccess}
           />
         </>
       ) : null}

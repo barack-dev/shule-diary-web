@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { getAssignmentAttentionBadges } from "../lib/assignment-priority";
+import {
+  TEACHER_REVIEW_STATUS_OPTIONS,
+  type AssignmentReviewRequest,
+  type TeacherReviewStatus,
+} from "../lib/assignment-review";
 import type { AssignmentCardData, AssignmentComment } from "../lib/types";
 
 type Props = {
@@ -15,6 +20,11 @@ type Props = {
   commentsTitle?: string;
   commentPlaceholder?: string;
   commentButtonLabel?: string;
+  canReviewAssignment?: boolean;
+  onReviewAssignment?: (request: AssignmentReviewRequest) => Promise<void>;
+  isSavingReview?: boolean;
+  reviewSaveError?: string | null;
+  reviewSaveSuccess?: string | null;
 };
 
 export default function AssignmentDetailsPanel({
@@ -28,9 +38,22 @@ export default function AssignmentDetailsPanel({
   commentsTitle = "Comments",
   commentPlaceholder = "Write a comment...",
   commentButtonLabel = "Add comment",
+  canReviewAssignment = false,
+  onReviewAssignment,
+  isSavingReview = false,
+  reviewSaveError,
+  reviewSaveSuccess,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const [reviewFeedback, setReviewFeedback] = useState("");
   const attentionBadges = getAssignmentAttentionBadges(assignment);
+  const canSubmitReview = canReviewAssignment && assignment.status === "Submitted";
+  const showReviewSection =
+    canReviewAssignment &&
+    (assignment.status === "Submitted" ||
+      isSavingReview ||
+      Boolean(reviewSaveError) ||
+      Boolean(reviewSaveSuccess));
 
   const commentCountLabel = useMemo(() => {
     return `${comments.length} comment${comments.length === 1 ? "" : "s"}`;
@@ -47,6 +70,22 @@ export default function AssignmentDetailsPanel({
       setDraft("");
     } catch {
       // Save error state is shown by the parent component.
+    }
+  };
+
+  const handleReviewAssignment = async (status: TeacherReviewStatus) => {
+    if (!onReviewAssignment || !canSubmitReview) {
+      return;
+    }
+
+    try {
+      await onReviewAssignment({
+        status,
+        feedbackMessage: reviewFeedback,
+      });
+      setReviewFeedback("");
+    } catch {
+      // Review save error state is shown by the parent component.
     }
   };
 
@@ -111,6 +150,58 @@ export default function AssignmentDetailsPanel({
             {assignment.description}
           </p>
         </section>
+
+        {showReviewSection ? (
+          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <div>
+              <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Teacher review
+              </h4>
+              <p className="mt-2 text-sm font-medium text-slate-900">
+                Current status: {assignment.status}
+              </p>
+            </div>
+
+            {canSubmitReview ? (
+              <>
+                <label htmlFor="teacher-review-feedback" className="sr-only">
+                  Teacher feedback
+                </label>
+                <textarea
+                  id="teacher-review-feedback"
+                  value={reviewFeedback}
+                  onChange={(event) => setReviewFeedback(event.target.value)}
+                  disabled={isSavingReview}
+                  placeholder="Optional feedback for the family..."
+                  className="min-h-24 w-full rounded-2xl border border-slate-300 p-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  {TEACHER_REVIEW_STATUS_OPTIONS.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => handleReviewAssignment(status)}
+                      disabled={isSavingReview}
+                      className={`rounded-2xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        status === "Reviewed"
+                          ? "bg-slate-900 text-white hover:bg-slate-700"
+                          : "border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                      }`}
+                    >
+                      {isSavingReview ? "Saving..." : status === "Reviewed" ? "Mark reviewed" : "Needs support"}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {reviewSaveError ? (
+              <p className="text-sm text-rose-700">{reviewSaveError}</p>
+            ) : reviewSaveSuccess ? (
+              <p className="text-sm text-emerald-700">{reviewSaveSuccess}</p>
+            ) : null}
+          </section>
+        ) : null}
 
         <section className="space-y-3">
           <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
