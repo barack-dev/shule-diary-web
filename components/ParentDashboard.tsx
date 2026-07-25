@@ -67,6 +67,8 @@ export default function ParentDashboard({ profile, metrics, columns, parentName 
           commentsTitle="Teacher & family comments"
           commentPlaceholder="Ask the teacher a question or share an update..."
           commentButtonLabel="Send comment"
+          canUpdateParentProgress
+          actionRole="parent"
         />
       </section>
     </>

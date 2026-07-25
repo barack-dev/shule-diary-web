@@ -120,6 +120,7 @@ export default function DashboardExperience({
                     role: "Teacher",
                   }}
                   canReviewAssignments
+                  actionRole="teacher"
                 />
               </section>
             </>

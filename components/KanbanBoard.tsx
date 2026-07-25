@@ -4,12 +4,18 @@ import { DndContext, DragOverlay, PointerSensor, closestCorners, useSensor, useS
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { countAssignmentsNeedingAttention } from "../lib/assignment-priority";
+import { getAssignmentCommentTemplates } from "../lib/assignment-comment-templates";
 import {
   countKanbanAssignments,
   filterKanbanColumns,
   type AssignmentDueDateGroup,
 } from "../lib/assignment-filters";
 import { insertAssignmentComment } from "../lib/assignment-comments";
+import {
+  applyParentProgressStatus,
+  getParentProgressAction,
+  type ParentProgressRequest,
+} from "../lib/assignment-parent-workflow";
 import {
   applyTeacherReviewStatus,
   canReviewSubmittedAssignment,
@@ -21,8 +27,10 @@ import type {
   AssignmentComment,
   AssignmentStatus,
   CommentAuthorRole,
+  DashboardRole,
   KanbanColumnData,
 } from "../lib/types";
+import AssignmentActionItemsPanel from "./AssignmentActionItemsPanel";
 import AssignmentDetailsPanel from "./AssignmentDetailsPanel";
 import AssignmentProgressPanel from "./AssignmentProgressPanel";
 import AssignmentQuickStatsPanel from "./AssignmentQuickStatsPanel";
@@ -43,6 +51,8 @@ type Props = {
   commentPlaceholder?: string;
   commentButtonLabel?: string;
   canReviewAssignments?: boolean;
+  canUpdateParentProgress?: boolean;
+  actionRole?: DashboardRole;
 };
 
 type DragEndOverData = {
@@ -97,6 +107,8 @@ export default function KanbanBoard({
   commentPlaceholder,
   commentButtonLabel,
   canReviewAssignments = false,
+  canUpdateParentProgress = false,
+  actionRole = "teacher",
 }: Props) {
   const isMounted = useSyncExternalStore(
     subscribeToClientHydration,
@@ -124,6 +136,9 @@ export default function KanbanBoard({
   const [isSavingReview, setIsSavingReview] = useState(false);
   const [reviewSaveError, setReviewSaveError] = useState<string | null>(null);
   const [reviewSaveSuccess, setReviewSaveSuccess] = useState<string | null>(null);
+  const [isSavingParentProgress, setIsSavingParentProgress] = useState(false);
+  const [parentProgressSaveError, setParentProgressSaveError] = useState<string | null>(null);
+  const [parentProgressSaveSuccess, setParentProgressSaveSuccess] = useState<string | null>(null);
   const [statusSaveError, setStatusSaveError] = useState<string | null>(null);
   const [statusSaveSuccess, setStatusSaveSuccess] = useState<string | null>(null);
   const [statusSaveInFlightCount, setStatusSaveInFlightCount] = useState(0);
@@ -152,6 +167,14 @@ export default function KanbanBoard({
     }
     return commentsByAssignment[selectedAssignment.id] ?? selectedAssignment.comments;
   }, [commentsByAssignment, selectedAssignment]);
+
+  const selectedCommentTemplates = useMemo(() => {
+    if (!selectedAssignment) {
+      return [];
+    }
+
+    return getAssignmentCommentTemplates(selectedAssignment, commentAuthor.role);
+  }, [commentAuthor.role, selectedAssignment]);
 
   const handleAddComment = async (message: string) => {
     const assignmentId = selectedAssignment?.id;
@@ -273,6 +296,88 @@ export default function KanbanBoard({
     }
   };
 
+  const handleUpdateParentProgress = async ({
+    status,
+    updateMessage,
+  }: ParentProgressRequest) => {
+    const assignment = selectedAssignment;
+    const assignmentId = assignment?.id?.trim() ?? "";
+    const assignmentStudentId = assignment?.assignmentStudentId?.trim() ?? "";
+    const parentAction = assignment
+      ? getParentProgressAction(assignment, canUpdateParentProgress)
+      : null;
+
+    if (
+      !assignment ||
+      !assignmentId ||
+      !assignmentStudentId ||
+      !parentAction ||
+      parentAction.status !== status
+    ) {
+      setParentProgressSaveError("This assignment cannot be updated right now. Please refresh and try again.");
+      setParentProgressSaveSuccess(null);
+      throw new Error("PARENT_PROGRESS_NOT_AVAILABLE");
+    }
+
+    const trimmedUpdate = updateMessage.trim();
+    let statusSaved = false;
+
+    setParentProgressSaveError(null);
+    setParentProgressSaveSuccess(null);
+    setIsSavingParentProgress(true);
+
+    try {
+      await updateAssignmentStatus({
+        assignmentStudentId,
+        status,
+      });
+      statusSaved = true;
+
+      setBoardColumns((currentColumns) =>
+        applyParentProgressStatus(currentColumns, assignmentId, status),
+      );
+      setStatusSaveError(null);
+      setStatusSaveSuccess("Status saved.");
+
+      if (trimmedUpdate) {
+        const newComment = await insertAssignmentComment({
+          assignmentStudentId,
+          authorName: commentAuthor.name,
+          authorRole: commentAuthor.role,
+          message: trimmedUpdate,
+        });
+
+        setCommentsByAssignment((previous) => {
+          const existing = previous[assignmentId] ?? assignment.comments;
+          return {
+            ...previous,
+            [assignmentId]: [...existing, newComment],
+          };
+        });
+      }
+
+      setParentProgressSaveSuccess(
+        trimmedUpdate ? "Progress saved with update." : "Progress saved.",
+      );
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error("[ShuleDiary] Unable to save family progress:", error.message);
+      } else {
+        console.error("[ShuleDiary] Unable to save family progress:", error);
+      }
+
+      setParentProgressSaveSuccess(null);
+      setParentProgressSaveError(
+        statusSaved
+          ? "Status saved, but the update was not saved. Use the comment box below to send it."
+          : "Could not save family progress. Please try again.",
+      );
+      throw new Error("PARENT_PROGRESS_SAVE_FAILED");
+    } finally {
+      setIsSavingParentProgress(false);
+    }
+  };
+
   const columnsWithLiveComments = useMemo(() => {
     return boardColumns.map((column) => ({
       ...column,
@@ -362,6 +467,8 @@ export default function KanbanBoard({
     setCommentSaveSuccess(null);
     setReviewSaveError(null);
     setReviewSaveSuccess(null);
+    setParentProgressSaveError(null);
+    setParentProgressSaveSuccess(null);
   };
 
   const handleCloseAssignment = () => {
@@ -370,6 +477,8 @@ export default function KanbanBoard({
     setCommentSaveSuccess(null);
     setReviewSaveError(null);
     setReviewSaveSuccess(null);
+    setParentProgressSaveError(null);
+    setParentProgressSaveSuccess(null);
   };
 
   const computeDragResult = (
@@ -569,6 +678,8 @@ export default function KanbanBoard({
 
       <AssignmentQuickStatsPanel columns={columnsWithLiveComments} />
 
+      <AssignmentActionItemsPanel columns={columnsWithLiveComments} role={actionRole} />
+
       <AssignmentProgressPanel columns={columnsWithLiveComments} />
 
       <RecentActivityPanel columns={columnsWithLiveComments} />
@@ -736,11 +847,17 @@ export default function KanbanBoard({
             commentsTitle={commentsTitle}
             commentPlaceholder={commentPlaceholder}
             commentButtonLabel={commentButtonLabel}
+            commentTemplates={selectedCommentTemplates}
             canReviewAssignment={canReviewAssignments}
             onReviewAssignment={handleReviewAssignment}
             isSavingReview={isSavingReview}
             reviewSaveError={reviewSaveError}
             reviewSaveSuccess={reviewSaveSuccess}
+            canUpdateParentProgress={canUpdateParentProgress}
+            onUpdateParentProgress={handleUpdateParentProgress}
+            isSavingParentProgress={isSavingParentProgress}
+            parentProgressSaveError={parentProgressSaveError}
+            parentProgressSaveSuccess={parentProgressSaveSuccess}
           />
         </>
       ) : null}

@@ -3,11 +3,17 @@
 import { useMemo, useState } from "react";
 import { getAssignmentAttentionBadges } from "../lib/assignment-priority";
 import {
+  getParentProgressAction,
+  type ParentProgressRequest,
+} from "../lib/assignment-parent-workflow";
+import {
   TEACHER_REVIEW_STATUS_OPTIONS,
   type AssignmentReviewRequest,
   type TeacherReviewStatus,
 } from "../lib/assignment-review";
 import type { AssignmentCardData, AssignmentComment } from "../lib/types";
+import AssignmentLearningRecapPanel from "./AssignmentLearningRecapPanel";
+import AssignmentLifecyclePanel from "./AssignmentLifecyclePanel";
 
 type Props = {
   assignment: AssignmentCardData;
@@ -20,11 +26,17 @@ type Props = {
   commentsTitle?: string;
   commentPlaceholder?: string;
   commentButtonLabel?: string;
+  commentTemplates?: string[];
   canReviewAssignment?: boolean;
   onReviewAssignment?: (request: AssignmentReviewRequest) => Promise<void>;
   isSavingReview?: boolean;
   reviewSaveError?: string | null;
   reviewSaveSuccess?: string | null;
+  canUpdateParentProgress?: boolean;
+  onUpdateParentProgress?: (request: ParentProgressRequest) => Promise<void>;
+  isSavingParentProgress?: boolean;
+  parentProgressSaveError?: string | null;
+  parentProgressSaveSuccess?: string | null;
 };
 
 export default function AssignmentDetailsPanel({
@@ -38,22 +50,39 @@ export default function AssignmentDetailsPanel({
   commentsTitle = "Comments",
   commentPlaceholder = "Write a comment...",
   commentButtonLabel = "Add comment",
+  commentTemplates = [],
   canReviewAssignment = false,
   onReviewAssignment,
   isSavingReview = false,
   reviewSaveError,
   reviewSaveSuccess,
+  canUpdateParentProgress = false,
+  onUpdateParentProgress,
+  isSavingParentProgress = false,
+  parentProgressSaveError,
+  parentProgressSaveSuccess,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [parentProgressMessage, setParentProgressMessage] = useState("");
   const attentionBadges = getAssignmentAttentionBadges(assignment);
   const canSubmitReview = canReviewAssignment && assignment.status === "Submitted";
+  const parentProgressAction = getParentProgressAction(
+    assignment,
+    canUpdateParentProgress,
+  );
   const showReviewSection =
     canReviewAssignment &&
     (assignment.status === "Submitted" ||
       isSavingReview ||
       Boolean(reviewSaveError) ||
       Boolean(reviewSaveSuccess));
+  const showParentProgressSection =
+    canUpdateParentProgress &&
+    (Boolean(parentProgressAction) ||
+      isSavingParentProgress ||
+      Boolean(parentProgressSaveError) ||
+      Boolean(parentProgressSaveSuccess));
 
   const commentCountLabel = useMemo(() => {
     return `${comments.length} comment${comments.length === 1 ? "" : "s"}`;
@@ -73,6 +102,13 @@ export default function AssignmentDetailsPanel({
     }
   };
 
+  const handleUseCommentTemplate = (template: string) => {
+    setDraft((currentDraft) => {
+      const trimmedDraft = currentDraft.trim();
+      return trimmedDraft ? `${trimmedDraft}\n\n${template}` : template;
+    });
+  };
+
   const handleReviewAssignment = async (status: TeacherReviewStatus) => {
     if (!onReviewAssignment || !canSubmitReview) {
       return;
@@ -86,6 +122,22 @@ export default function AssignmentDetailsPanel({
       setReviewFeedback("");
     } catch {
       // Review save error state is shown by the parent component.
+    }
+  };
+
+  const handleUpdateParentProgress = async () => {
+    if (!onUpdateParentProgress || !parentProgressAction) {
+      return;
+    }
+
+    try {
+      await onUpdateParentProgress({
+        status: parentProgressAction.status,
+        updateMessage: parentProgressMessage,
+      });
+      setParentProgressMessage("");
+    } catch {
+      // Parent progress save error state is shown by the parent component.
     }
   };
 
@@ -141,6 +193,10 @@ export default function AssignmentDetailsPanel({
             </div>
           </dl>
         </section>
+
+        <AssignmentLifecyclePanel assignment={assignment} />
+
+        <AssignmentLearningRecapPanel assignment={assignment} comments={comments} />
 
         <section className="space-y-2">
           <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -203,6 +259,54 @@ export default function AssignmentDetailsPanel({
           </section>
         ) : null}
 
+        {showParentProgressSection ? (
+          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <div>
+              <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Family progress
+              </h4>
+              <p className="mt-2 text-sm font-medium text-slate-900">
+                Current status: {assignment.status}
+              </p>
+            </div>
+
+            {parentProgressAction ? (
+              <>
+                <p className="text-sm leading-6 text-slate-600">
+                  {parentProgressAction.helper}
+                </p>
+                <label htmlFor="parent-progress-update" className="sr-only">
+                  Family update
+                </label>
+                <textarea
+                  id="parent-progress-update"
+                  value={parentProgressMessage}
+                  onChange={(event) => setParentProgressMessage(event.target.value)}
+                  disabled={isSavingParentProgress}
+                  placeholder="Optional update for the teacher..."
+                  className="min-h-24 w-full rounded-2xl border border-slate-300 p-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleUpdateParentProgress}
+                    disabled={isSavingParentProgress}
+                    className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSavingParentProgress ? "Saving..." : parentProgressAction.label}
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {parentProgressSaveError ? (
+              <p className="text-sm text-rose-700">{parentProgressSaveError}</p>
+            ) : parentProgressSaveSuccess ? (
+              <p className="text-sm text-emerald-700">{parentProgressSaveSuccess}</p>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="space-y-3">
           <h4 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
             {commentsTitle}
@@ -231,6 +335,26 @@ export default function AssignmentDetailsPanel({
       </div>
 
       <div className="border-t border-slate-200 bg-white p-6">
+        {commentTemplates.length > 0 ? (
+          <div className="mb-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Quick replies
+            </p>
+            <div className="grid gap-2">
+              {commentTemplates.map((template) => (
+                <button
+                  key={template}
+                  type="button"
+                  onClick={() => handleUseCommentTemplate(template)}
+                  disabled={isSavingComment}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs leading-5 text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {template}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <label htmlFor="new-comment" className="sr-only">
           Add comment
         </label>
